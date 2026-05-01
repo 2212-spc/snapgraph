@@ -1,0 +1,17 @@
+.env
+.env.*
+.claude/
+.my_snapgraph/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.coverage
+.DS_Store
+*.log
+node_modules/
+frontend/node_modules/
+dist/
+coverage/
+evaluation_results.json
+evaluation_report.md

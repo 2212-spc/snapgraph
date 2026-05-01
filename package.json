@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "dev": "vite --config frontend/vite.config.ts --host 127.0.0.1 --port 5173",
+    "build": "vite build --config frontend/vite.config.ts"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "cytoscape": "^3.33.3",
+    "lucide-vue-next": "^0.468.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vue": "^3.5.13"
+  }
+}

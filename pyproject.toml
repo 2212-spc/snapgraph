@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snapgraph"
+version = "0.1.0"
+description = "A cognitive LLM Wiki for preserving source context and future recall paths."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+]
+anthropic = [
+    "anthropic>=0.39",
+]
+deepseek = [
+    "openai>=1.0",
+]
+api = [
+    "fastapi>=0.110",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.27",
+]
+demo = [
+    "fastapi>=0.110",
+    "networkx>=3.0",
+    "python-multipart>=0.0.9",
+    "pyvis>=0.3",
+    "streamlit>=1.30",
+    "uvicorn>=0.27",
+]
+
+[project.scripts]
+snapgraph = "snapgraph.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["snapgraph*"]
+
+[tool.setuptools.package-data]
+snapgraph = ["static/**/*"]
