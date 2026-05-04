@@ -11,7 +11,7 @@ from snapgraph.spaces import create_graph_space
 from snapgraph.workspace import Workspace, create_workspace
 
 
-def test_focus_graph_for_question_is_local_and_prioritizes_user_stated(tmp_path: Path) -> None:
+def test_focus_graph_for_question_is_local_and_prioritizes_user_guided(tmp_path: Path) -> None:
     workspace = _workspace_with_demo_sources(tmp_path)
 
     focus = focus_graph_for_payload(

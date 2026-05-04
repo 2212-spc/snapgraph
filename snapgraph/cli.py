@@ -98,7 +98,7 @@ def eval_command(
     provider: str = typer.Option(
         "mock",
         "--provider",
-        help="Answer provider for evaluation: mock, deepseek, or anthropic.",
+        help="Answer provider for evaluation: mock, deepseek, anthropic, or qwen.",
     ),
     model: str = typer.Option("", "--model", help="Optional provider model override."),
     api_key_env: str = typer.Option(
@@ -191,9 +191,9 @@ def config_show() -> None:
 
 @config_app.command("set-llm-provider")
 def config_set_llm_provider(provider: str) -> None:
-    """Set the LLM provider (mock or anthropic)."""
-    if provider not in ("mock", "anthropic", "deepseek"):
-        typer.echo(f"Unknown provider: {provider}. Use 'mock', 'anthropic', or 'deepseek'.", err=True)
+    """Set the LLM provider."""
+    if provider not in ("mock", "anthropic", "deepseek", "qwen"):
+        typer.echo(f"Unknown provider: {provider}. Use 'mock', 'anthropic', 'deepseek', or 'qwen'.", err=True)
         raise typer.Exit(code=1)
     workspace = get_workspace()
     config = load_config(workspace)

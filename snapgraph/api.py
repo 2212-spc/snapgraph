@@ -21,7 +21,7 @@ from .config import (
 from .demo_data import load_demo_dataset, DEMO_QUESTIONS
 from .focus import focus_graph_for_payload, focus_graph_from_retrieval
 from .graph_store import graph_diagnostics, graph_for_space, graph_insights, load_graph
-from .ingest import ingest_source
+from .ingest import ingest_source, update_cognitive_context
 from .linting import lint_workspace
 from .llm import MockLLM
 from .llm_providers import provider_metadata, resolve_llm_with_metadata
@@ -35,6 +35,7 @@ from .spaces import (
     get_suggestion,
     list_graph_spaces,
     list_suggestions,
+    move_source_to_space,
     reject_suggestion,
     update_graph_space,
 )
@@ -267,51 +268,120 @@ def api_source_detail(source_id: str):
     }
 
 
+@app.patch("/api/sources/{source_id}/context")
+def api_source_context_update(source_id: str, payload: dict):
+    try:
+        update_cognitive_context(
+            _workspace(),
+            source_id,
+            why_saved=payload.get("why_saved"),
+            related_project=payload.get("related_project"),
+            open_loops=payload.get("open_loops"),
+            future_recall_questions=payload.get("future_recall_questions"),
+            confirm=bool(payload.get("confirm")),
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
+    return {"detail": detail or {}}
+
+
 @app.post("/api/ingest")
 def api_ingest(
     file: UploadFile = File(...),
     why: str = Form(""),
     space_id: str = Form(""),
+    route_mode: str = Form("auto"),
 ):
     ws = _workspace()
     suffix = Path(file.filename or "untitled.md").suffix.lower()
-    if suffix not in {".md", ".markdown", ".txt", ".png", ".jpg", ".jpeg", ".webp"}:
+    if suffix not in {".gif", ".htm", ".html", ".jpeg", ".jpg", ".markdown", ".md", ".pdf", ".png", ".txt", ".webp"}:
         raise HTTPException(400, f"Unsupported file type: {suffix}")
+    route_mode = (route_mode or "auto").strip().lower()
+    if route_mode not in {"auto", "manual", "inbox"}:
+        raise HTTPException(400, "route_mode must be auto, manual, or inbox")
+    if route_mode == "manual" and not space_id.strip():
+        raise HTTPException(400, "space_id is required when route_mode is manual")
+    ingest_space_id = space_id.strip() if route_mode == "manual" else INBOX_GRAPH_SPACE_ID
     with tempfile.TemporaryDirectory() as tmpdir:
         source_path = Path(tmpdir) / (file.filename or "untitled")
         source_path.write_bytes(file.file.read())
-        llm, metadata = _resolve_llm_or_503(ws)
+        llm, metadata = _resolve_ingest_llm(ws)
         try:
             result = ingest_source(
                 ws,
                 source_path,
                 why=why or None,
                 llm=llm,
-                space_id=space_id or None,
+                space_id=ingest_space_id,
             )
         except Exception as exc:
             _raise_provider_runtime_error(ws, metadata.as_dict(), exc)
+    routing_suggestion = (
+        get_suggestion(ws, result.routing_suggestion_id)
+        if result.routing_suggestion_id
+        else None
+    )
+    if route_mode == "auto" and _should_auto_accept_route(routing_suggestion):
+        routing_suggestion = accept_suggestion(ws, routing_suggestion["id"])
+    source_detail = next((source for source in api_sources("all") if source["id"] == result.source.id), {})
     return {
         "source_id": result.source.id,
-        "title": result.source.title,
-        "type": result.source.type,
-        "summary": result.source.summary,
+        "title": source_detail.get("title", result.source.title),
+        "type": source_detail.get("type", result.source.type),
+        "summary": source_detail.get("summary", result.source.summary),
         "status": result.cognitive_context.why_saved_status,
         "wiki_page": result.page.relative_page_path,
-        "graph_space_id": result.source.graph_space_id,
+        "graph_space_id": source_detail.get("graph_space_id", result.source.graph_space_id),
+        "space_name": source_detail.get("space_name", ""),
         "routing_suggestion_id": result.routing_suggestion_id,
         "warnings": result.warnings,
         "provider": metadata.as_dict(),
         "focus_graph": focus_graph_for_payload(
             ws,
-            {"source_id": result.source.id, "space_id": result.source.graph_space_id},
+            {"source_id": result.source.id, "space_id": source_detail.get("graph_space_id", result.source.graph_space_id)},
         ),
-        "routing_suggestion": (
-            get_suggestion(ws, result.routing_suggestion_id)
-            if result.routing_suggestion_id
-            else None
-        ),
+        "routing_suggestion": routing_suggestion,
     }
+
+
+def _should_auto_accept_route(suggestion: dict | None) -> bool:
+    if not suggestion or suggestion.get("status") != "pending":
+        return False
+    payload = suggestion.get("payload") or {}
+    target_space_id = payload.get("target_space_id")
+    confidence = float(suggestion.get("confidence") or 0)
+    if target_space_id == DEFAULT_GRAPH_SPACE_ID and confidence <= 0.52:
+        return False
+    return confidence >= 0.62
+
+
+@app.post("/api/sources/{source_id}/route")
+def api_source_route(source_id: str, payload: dict):
+    space_id = str(payload.get("space_id") or "").strip()
+    if not space_id:
+        raise HTTPException(400, "space_id is required")
+    reason = str(payload.get("reason") or "User moved from graph workspace.").strip()
+    try:
+        move_source_to_space(_workspace(), source_id, space_id, reason=reason)
+    except KeyError as exc:
+        raise HTTPException(404, "Source or space not found") from exc
+    detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
+    return {"detail": detail or {}}
+
+
+def _resolve_ingest_llm(workspace: Workspace):
+    try:
+        return resolve_llm_with_metadata(workspace)
+    except RuntimeError as exc:
+        return MockLLM(), provider_metadata(
+            workspace,
+            provider_used="mock",
+            fallback_used=True,
+            provider_error=str(exc),
+        )
 
 
 # ── Graph ──
@@ -497,7 +567,7 @@ def api_config_put(payload: dict):
     ws = _workspace()
     config = load_config(ws)
     provider = payload.get("provider", config.llm.provider)
-    if provider not in ("mock", "deepseek", "anthropic"):
+    if provider not in ("mock", "deepseek", "anthropic", "qwen"):
         raise HTTPException(400, f"Unknown provider: {provider}")
     api_key_env = payload.get("api_key_env", config.llm.api_key_env)
     try:

@@ -4,7 +4,13 @@ import json
 import sqlite3
 
 from .graph_store import graph_for_space
-from .models import DEFAULT_GRAPH_SPACE_ID, RetrievedContext, RetrievalResult
+from .models import (
+    DEFAULT_GRAPH_SPACE_ID,
+    RetrievedContext,
+    RetrievalResult,
+    is_ai_inferred_status,
+    is_user_guided_status,
+)
 from .retrieval import retrieve_for_question
 from .workspace import Workspace
 
@@ -135,14 +141,7 @@ def _empty_focus_graph(center: dict, space_id: str) -> dict:
 
 
 def _rank_contexts(contexts: list[RetrievedContext]) -> list[RetrievedContext]:
-    return sorted(
-        contexts,
-        key=lambda context: (
-            context.why_saved_status != "user-stated",
-            not any(loop and loop != "None" for loop in context.open_loops),
-            context.title,
-        ),
-    )
+    return contexts
 
 
 def _rank_edges(edges: list[dict]) -> list[dict]:
@@ -219,8 +218,8 @@ def _evidence_cards(contexts: list[RetrievedContext]) -> list[dict]:
 
 
 def _confidence_summary(contexts: list[RetrievedContext]) -> dict:
-    user_stated = sum(1 for context in contexts if context.why_saved_status == "user-stated")
-    ai_inferred = sum(1 for context in contexts if context.why_saved_status == "AI-inferred")
+    user_stated = sum(1 for context in contexts if is_user_guided_status(context.why_saved_status))
+    ai_inferred = sum(1 for context in contexts if is_ai_inferred_status(context.why_saved_status))
     if user_stated >= 2:
         label = "strong"
     elif user_stated == 1:

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .graph_store import graph_diagnostics, graph_insights, load_graph
 from .linting import lint_workspace
+from .models import is_ai_inferred_status
 from .wiki import add_report_to_index, append_log_event, markdown_link_target, question_pages
 from .workspace import Workspace
 
@@ -64,51 +65,51 @@ def render_graph_report(workspace: Workspace) -> str:
 
     return "\n".join(
         [
-            f"# Cognitive Graph Report ({today})",
+            f"# 认知图谱报告（{today}）",
             "",
-            "## Corpus Summary",
-            f"- Sources: {len(sources)}",
-            f"- Saved questions: {len(saved_questions)}",
-            f"- Nodes: {diagnostics.node_count}",
-            f"- Edges: {diagnostics.edge_count}",
-            f"- Lint status: {lint.status}",
+            "## 语料概览",
+            f"- 材料数：{len(sources)}",
+            f"- 已保存问题数：{len(saved_questions)}",
+            f"- 节点数：{diagnostics.node_count}",
+            f"- 边数：{diagnostics.edge_count}",
+            f"- 检查状态：{lint.status}",
             "",
-            "## Cognitive Context Mix",
+            "## 认知上下文分布",
             *_bullet_lines(_status_summary(status_counts)),
             "",
-            "## Confidence & Audit Trail",
+            "## 置信度与审计轨迹",
             *_bullet_lines(audit_lines),
             "",
-            "## Project Clusters",
+            "## 项目簇",
             *_bullet_lines(_project_cluster_lines(insights)),
             "",
-            "## High-Value Review Paths",
+            "## 高价值复查路径",
             *_bullet_lines(_high_value_path_lines(insights)),
             "",
-            "## Cognitive Gaps",
+            "## 认知缺口",
             *_bullet_lines(_cognitive_gap_lines(insights)),
             "",
-            "## Honest Audit Trail",
+            "## 诚实审计说明",
             *_bullet_lines(_honest_audit_lines(insights)),
             "",
-            "## Top Hubs",
-            *_bullet_lines([f"{label}: {degree} edges" for label, degree in diagnostics.top_hubs]),
+            "## 关键枢纽",
+            *_bullet_lines([f"{label}：{degree} 条边" for label, degree in diagnostics.top_hubs]),
             "",
             "## Open Loops",
             *_bullet_lines(open_loops[:10]),
             "",
-            "## Saved Questions",
+            "## 已保存问题",
             *_bullet_lines(saved_questions[:10]),
             "",
-            "## Graph Paths Worth Reviewing",
+            "## 值得复查的图谱路径",
             "```text",
             *graph_paths[:10],
             "```",
             "",
-            "## Suggested Next Questions",
+            "## 建议的后续问题",
             *_bullet_lines(future_questions[:8]),
             "",
-            "## Lint Summary",
+            "## 检查摘要",
             *_bullet_lines(_lint_summary(lint)),
         ]
     )
@@ -174,7 +175,7 @@ def _open_loops(contexts: list[dict]) -> list[str]:
         for loop in context["open_loops"]
         if loop and loop != "None"
     ]
-    return sorted(dict.fromkeys(loops)) or ["No open loops found."]
+    return sorted(dict.fromkeys(loops)) or ["未发现 open loop。"]
 
 
 def _future_questions(
@@ -188,9 +189,11 @@ def _future_questions(
         for question in context["future_recall_questions"]:
             if question and question != "None":
                 questions.append(
-                    f"{question} — from {source_link}, {context['why_saved_status']}, confidence {context['confidence']:.2f}"
+                    f"{question} - 来自 {source_link}，{_status_label(context['why_saved_status'])}，置信度 {context['confidence']:.2f}"
                 )
-    return sorted(dict.fromkeys(questions)) or ["Ingest sources or save answers to generate better recall questions."]
+    return sorted(dict.fromkeys(questions)) or [
+        "先导入材料或保存回答，再生成更好的回忆问题。"
+    ]
 
 
 def _graph_paths_worth_reviewing(
@@ -228,29 +231,31 @@ def _graph_paths_worth_reviewing(
         if project_id:
             project_label = nodes.get(project_id, {}).get("label", project_id)
             paths.append(
-                f"{source_label} -> triggered_thought [{status}, {confidence:.2f}] -> {thought_label} -> belongs_to -> {project_label}"
+                f"{source_label} -> 触发理由 [{_status_label(status)}, {confidence:.2f}] -> {thought_label} -> 归属项目 -> {project_label}"
             )
         else:
-            paths.append(f"{source_label} -> triggered_thought [{status}, {confidence:.2f}] -> {thought_label}")
-    return sorted(dict.fromkeys(paths)) or ["No graph paths found yet."]
+            paths.append(
+                f"{source_label} -> 触发理由 [{_status_label(status)}, {confidence:.2f}] -> {thought_label}"
+            )
+    return sorted(dict.fromkeys(paths)) or ["暂时还没有可复查的图谱路径。"]
 
 
 def _status_summary(status_counts: dict[str, int]) -> list[str]:
     if not status_counts:
-        return ["No cognitive contexts found."]
-    return [f"{status}: {count}" for status, count in sorted(status_counts.items())]
+        return ["未发现认知上下文。"]
+    return [f"{_status_label(status)}：{count}" for status, count in sorted(status_counts.items())]
 
 
 def _project_cluster_lines(insights: dict) -> list[str]:
     clusters = insights.get("project_clusters", [])
     if not clusters:
-        return ["No project clusters found yet."]
+        return ["暂时还没有项目簇。"]
     lines = []
     for cluster in clusters[:8]:
         lines.append(
-            f"{cluster['project']}: {cluster['source_count']} sources, "
-            f"{cluster['user_stated']} user-stated, {cluster['ai_inferred']} AI-inferred, "
-            f"average confidence {cluster['average_confidence']:.2f}"
+            f"{cluster['project']}：{cluster['source_count']} 份材料，"
+            f"{cluster['user_stated']} 份用户确认，{cluster['ai_inferred']} 份 AI 推断，"
+            f"平均置信度 {cluster['average_confidence']:.2f}"
         )
     return lines
 
@@ -258,10 +263,10 @@ def _project_cluster_lines(insights: dict) -> list[str]:
 def _high_value_path_lines(insights: dict) -> list[str]:
     paths = insights.get("high_value_review_paths", [])
     if not paths:
-        return ["No high-value review paths found yet."]
+        return ["暂时还没有高价值复查路径。"]
     return [
         (
-            f"{path['path']} [{path['status']}, confidence {path['confidence']:.2f}] "
+            f"{path['path']} [{_status_label(path['status'])}，置信度 {path['confidence']:.2f}] "
             f"- {path['why']}"
         )
         for path in paths[:10]
@@ -274,12 +279,12 @@ def _cognitive_gap_lines(insights: dict) -> list[str]:
     unassigned = insights.get("unassigned_sources", [])
     if low_confidence:
         titles = ", ".join(item["title"] for item in low_confidence[:5])
-        gaps.append(f"Review low-confidence AI-inferred memories: {titles}")
+        gaps.append(f"复查这些低置信度的 AI 推断记忆：{titles}")
     if unassigned:
         titles = ", ".join(item["title"] for item in unassigned[:5])
-        gaps.append(f"Assign projects or questions to unassigned sources: {titles}")
+        gaps.append(f"为这些未归类材料补充项目或问题归属：{titles}")
     if not gaps:
-        gaps.append("No major cognitive gaps detected.")
+        gaps.append("未发现明显的认知缺口。")
     return gaps
 
 
@@ -287,15 +292,15 @@ def _honest_audit_lines(insights: dict) -> list[str]:
     lines = []
     for item in insights.get("low_confidence_contexts", [])[:5]:
         lines.append(
-            f"{item['title']}: AI-inferred, confidence {item['confidence']:.2f}; "
-            "ask the user to confirm or replace this saved reason."
+            f"{item['title']}：AI 推断，置信度 {item['confidence']:.2f}；"
+            "建议请用户确认或改写这条保存理由。"
         )
     for item in insights.get("bridge_sources", [])[:5]:
         lines.append(
-            f"{item['title']}: {item['status']}, confidence {item['confidence']:.2f}; "
+            f"{item['title']}：{_status_label(item['status'])}，置信度 {item['confidence']:.2f}；"
             f"{item['why']}"
         )
-    return lines or ["Every displayed memory path includes status and confidence."]
+    return lines or ["所有展示出的记忆路径都带有状态和置信度。"]
 
 
 def _audit_trail(
@@ -304,25 +309,25 @@ def _audit_trail(
     contexts: list[dict],
 ) -> list[str]:
     if not contexts:
-        return ["No cognitive contexts found."]
+        return ["未发现认知上下文。"]
     average_confidence = sum(context["confidence"] for context in contexts) / len(contexts)
-    lines = [f"Average confidence: {average_confidence:.2f}"]
+    lines = [f"平均置信度：{average_confidence:.2f}"]
     lines.extend(
         (
-            f"{_source_link(workspace, report_path, context)} — "
-            f"{context['why_saved_status']}, confidence {context['confidence']:.2f}, "
-            f"evidence `{context['source_id']}`"
+            f"{_source_link(workspace, report_path, context)} - "
+            f"{_status_label(context['why_saved_status'])}，置信度 {context['confidence']:.2f}，"
+            f"证据 `{context['source_id']}`"
         )
         for context in contexts
     )
     low_confidence = [
         context
         for context in contexts
-        if context["why_saved_status"] == "AI-inferred" and context["confidence"] < 0.7
+        if is_ai_inferred_status(context["why_saved_status"]) and context["confidence"] < 0.7
     ]
     if low_confidence:
         lines.append(
-            "Review low-confidence AI-inferred contexts: "
+            "需要复查的低置信度 AI 推断上下文："
             + ", ".join(context["title"] for context in low_confidence[:5])
         )
     return lines
@@ -334,14 +339,14 @@ def _source_link(workspace: Workspace, report_path: Path, context: dict) -> str:
 
 
 def _lint_summary(lint) -> list[str]:
-    lines = [f"Status: {lint.status}"]
-    lines.extend(f"Error: {error}" for error in lint.errors)
-    lines.extend(f"Warning: {warning}" for warning in lint.warnings)
+    lines = [f"状态：{lint.status}"]
+    lines.extend(f"错误：{error}" for error in lint.errors)
+    lines.extend(f"警告：{warning}" for warning in lint.warnings)
     return lines
 
 
 def _bullet_lines(items: list[str]) -> list[str]:
-    return [f"- {item}" for item in items] if items else ["- None"]
+    return [f"- {item}" for item in items] if items else ["- 无"]
 
 
 def _loads_list(raw_json: str) -> list[str]:
@@ -359,3 +364,13 @@ def _section_text(text: str, heading: str) -> str:
     if "\n## " in tail:
         tail = tail.split("\n## ", 1)[0]
     return " ".join(tail.strip().split())
+
+
+def _status_label(status: str) -> str:
+    mapping = {
+        "user-stated": "用户确认",
+        "user-guided": "用户引导",
+        "AI-inferred": "AI 推断",
+        "unknown": "未知",
+    }
+    return mapping.get(status, status)

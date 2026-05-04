@@ -66,6 +66,29 @@ def test_api_ask_save_flag_controls_question_writeback(tmp_path: Path, monkeypat
     assert after_save == before + 1
 
 
+def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    response = client.post(
+        "/api/ask",
+        json={"question": "我之前为什么觉得截图不是核心？", "save": False},
+    )
+
+    assert response.status_code == 200
+    text = response.json()["text"]
+    for heading in [
+        "## 找回的原话",
+        "## 相关材料",
+        "## 连接路径",
+        "## 涌现洞见",
+        "## 下一步",
+        "## 检索诊断",
+    ]:
+        assert heading in text
+
+
 def test_api_reports_provider_metadata(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)
@@ -94,6 +117,23 @@ def test_api_rejects_api_key_in_api_key_env(tmp_path: Path, monkeypatch) -> None
 
     assert response.status_code == 400
     assert "environment variable name" in response.json()["detail"]
+
+
+def test_api_config_accepts_qwen_multimodal_provider(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SNAPGRAPH_LLM_API_KEY", "test-key")
+    client = TestClient(app)
+
+    response = client.put(
+        "/api/config",
+        json={"provider": "qwen", "model": "qwen3-vl-plus", "api_key_env": "SNAPGRAPH_LLM_API_KEY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "qwen"
+    assert payload["runtime"]["provider_used"] == "qwen"
+    assert payload["runtime"]["model_used"] == "qwen3-vl-plus"
 
 
 def test_api_no_match_does_not_require_real_provider_key(tmp_path: Path, monkeypatch) -> None:
@@ -134,3 +174,65 @@ def test_api_fails_fast_when_real_provider_key_is_missing_for_evidence(
     assert detail["configured_provider"] == "deepseek"
     assert detail["provider_ready"] is False
     assert detail["fallback_used"] is False
+
+
+def test_api_can_confirm_and_correct_context(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Note\n\nOpen loop: keep revising.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    response = client.patch(
+        f"/api/sources/{source_id}/context",
+        json={
+            "why_saved": "This matters for the proposal narrative.",
+            "related_project": "Thesis proposal",
+            "open_loops": ["Rewrite the proposal framing."],
+            "confirm": True,
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()["detail"]
+    assert detail["why_saved_status"] == "user-stated"
+    assert detail["why_saved"] == "This matters for the proposal narrative."
+    assert detail["related_project"] == "Thesis proposal"
+    assert detail["open_loops"] == ["Rewrite the proposal framing."]
+
+
+def test_api_ingest_accepts_pdf_as_capture_shell(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/ingest",
+        files={"file": ("paper.pdf", b"%PDF-1.4\n% placeholder\n", "application/pdf")},
+        data={"why": "This PDF might close the agent memory question."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "pdf"
+    assert payload["status"] == "user-stated"
+
+
+def test_api_ingest_falls_back_to_mock_when_provider_key_missing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SNAPGRAPH_LLM_API_KEY", raising=False)
+    client = TestClient(app)
+    client.put("/api/config", json={"provider": "deepseek", "api_key_env": "SNAPGRAPH_LLM_API_KEY"})
+
+    response = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Note\n\nA local capture should still work.\n", "text/markdown")},
+        data={"why": "This must be preserved even without a provider key."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "user-stated"
+    assert payload["provider"]["provider_used"] == "mock"
+    assert payload["provider"]["fallback_used"] is True

@@ -55,8 +55,8 @@ def run_evaluation(
     model: str = "",
     api_key_env: str = "SNAPGRAPH_LLM_API_KEY",
 ) -> EvaluationRun:
-    if provider not in {"mock", "deepseek", "anthropic"}:
-        raise ValueError("provider must be mock, deepseek, or anthropic")
+    if provider not in {"mock", "deepseek", "anthropic", "qwen"}:
+        raise ValueError("provider must be mock, deepseek, anthropic, or qwen")
     api_key_env = validate_api_key_env_name(api_key_env)
 
     base_dir = output_dir or Path(tempfile.mkdtemp(prefix="snapgraph_eval_"))
@@ -131,7 +131,7 @@ def run_evaluation(
             scenario="PDF capability boundary",
             question="PDF 资料现在能进入系统吗？",
             expected_sources=["Capability Boundary"],
-            expected_claims=["PDF", "unsupported"],
+            expected_claims=["PDF", "capture"],
         ),
         _run_case(
             workspace,
@@ -209,7 +209,7 @@ Next: add a provider status panel so users know whether MockLLM or DeepSeek answ
 """,
         "07_capability_boundary.md": """# Capability Boundary
 
-Current stable ingestion supports Markdown, plain text, and experimental images. PDF ingestion is not part of the v0.1 stable baseline and should be reported as unsupported.
+Current stable ingestion supports Markdown, plain text, webpage exports, and experimental images. PDF capture is allowed as a file shell with user context, but PDF body parsing is not part of the stable baseline.
 """,
         "08_empty.md": "",
         "09_long_noise.md": "# Long Noise\n\n" + ("needle signal noise " * 1200),

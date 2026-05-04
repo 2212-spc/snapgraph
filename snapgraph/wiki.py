@@ -59,10 +59,12 @@ graph_space_id: {source.graph_space_id}
 - Related project: {related_project}
 - Open loops:
 {open_loops}
-- Future recall questions:
-{recall_questions}
 - Importance: {cognitive_context.importance}
 - Confidence: {cognitive_context.confidence:.2f}
+
+## Supportive Signals
+- Future recall questions:
+{recall_questions}
 
 ## Links
 - Related people:

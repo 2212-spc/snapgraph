@@ -100,11 +100,11 @@ def test_answer_space_filter_and_no_match_fail_closed(tmp_path: Path) -> None:
 
     assert inbox_answer.retrieval.contexts
     assert default_answer.retrieval.contexts == []
-    assert "Low confidence" in default_answer.text
-    assert "Low confidence" in no_match.text
+    assert "低置信度" in default_answer.text
+    assert "低置信度" in no_match.text
 
 
-def test_api_spaces_inbox_suggestions_and_accept_flow(tmp_path: Path, monkeypatch) -> None:
+def test_api_ingest_auto_route_accepts_high_confidence_suggestion(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)
     created = client.post(
@@ -122,22 +122,71 @@ def test_api_spaces_inbox_suggestions_and_accept_flow(tmp_path: Path, monkeypatc
 
     assert created.status_code == 200
     assert upload.status_code == 200
-    assert upload.json()["graph_space_id"] == INBOX_GRAPH_SPACE_ID
-    assert upload.json()["routing_suggestion_id"]
+    payload = upload.json()
+    assert payload["graph_space_id"] == "product_insights"
+    assert payload["routing_suggestion_id"]
+    assert payload["routing_suggestion"]["status"] == "accepted"
 
     inbox = client.get("/api/spaces/inbox/sources")
     suggestions = client.get("/api/suggestions", params={"status": "pending"})
-    suggestion = suggestions.json()["suggestions"][0]
-    accepted = client.post(f"/api/suggestions/{suggestion['id']}/accept")
 
     assert inbox.status_code == 200
-    assert len(inbox.json()) == 1
-    assert suggestion["payload"]["target_space_id"] == "product_insights"
-    assert accepted.status_code == 200
-    assert accepted.json()["status"] == "accepted"
+    assert inbox.json() == []
+    assert suggestions.json()["suggestions"] == []
 
     target_sources = client.get("/api/spaces/product_insights/sources")
     target_graph = client.get("/api/spaces/product_insights/graph")
 
     assert len(target_sources.json()) == 1
     assert target_graph.json()["node_count"] > 0
+
+
+def test_api_ingest_auto_route_keeps_low_confidence_default_in_inbox(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("misc.md", b"# Sour Plum Recipe\n\nSalt, sugar, and sour plums.\n", "text/markdown")},
+        data={"why": "Archive this stray recipe."},
+    )
+
+    assert upload.status_code == 200
+    payload = upload.json()
+    assert payload["graph_space_id"] == INBOX_GRAPH_SPACE_ID
+    assert payload["routing_suggestion"]["status"] == "pending"
+    assert payload["routing_suggestion"]["confidence"] == 0.52
+    assert payload["routing_suggestion"]["payload"]["target_space_id"] == DEFAULT_GRAPH_SPACE_ID
+
+
+def test_api_source_route_moves_material_between_spaces(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    created = client.post(
+        "/api/spaces",
+        json={
+            "name": "Research Decisions",
+            "purpose": "Research decisions, screenshots, and project judgment.",
+        },
+    )
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Note\n\nScreenshot routing note.\n", "text/markdown")},
+        data={"route_mode": "inbox", "why": "This belongs with research decisions."},
+    )
+    source_id = upload.json()["source_id"]
+
+    moved = client.post(
+        f"/api/sources/{source_id}/route",
+        json={"space_id": created.json()["id"], "reason": "User moved from graph workspace."},
+    )
+
+    assert created.status_code == 200
+    assert upload.status_code == 200
+    assert moved.status_code == 200
+    assert moved.json()["detail"]["graph_space_id"] == created.json()["id"]
+    target_sources = client.get(f"/api/spaces/{created.json()['id']}/sources")
+    assert [source["id"] for source in target_sources.json()] == [source_id]

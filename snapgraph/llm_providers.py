@@ -39,6 +39,9 @@ def _resolve_llm(workspace) -> LLMProvider:
     if provider_name == "deepseek":
         return _create_deepseek(config.llm)
 
+    if provider_name == "qwen":
+        return _create_qwen(config.llm)
+
     return MockLLM()
 
 
@@ -101,6 +104,8 @@ def _configured_provider(workspace) -> str:
 def _default_model_for_provider(provider: str) -> str:
     if provider == "deepseek":
         return DeepSeekProvider.DEFAULT_MODEL
+    if provider == "qwen":
+        return QwenProvider.DEFAULT_MODEL
     if provider == "anthropic":
         return AnthropicProvider.DEFAULT_MODEL
     return "mock"
@@ -128,6 +133,19 @@ def _create_deepseek(llm_config) -> LLMProvider:
         )
     return DeepSeekProvider(
         model=llm_config.model or DeepSeekProvider.DEFAULT_MODEL,
+        api_key=api_key,
+    )
+
+
+def _create_qwen(llm_config) -> LLMProvider:
+    api_key = os.environ.get(llm_config.api_key_env or "SNAPGRAPH_LLM_API_KEY", "")
+    if not api_key:
+        raise RuntimeError(
+            f"Qwen provider requires API key. "
+            f"Set environment variable {llm_config.api_key_env or 'SNAPGRAPH_LLM_API_KEY'}."
+        )
+    return QwenProvider(
+        model=llm_config.model or QwenProvider.DEFAULT_MODEL,
         api_key=api_key,
     )
 
@@ -162,79 +180,79 @@ class AnthropicProvider:
 
     def summarize(self, text: str) -> str:
         if not text.strip():
-            return "Empty source."
+            return "空内容。"
         return self._call(
             prompt=(
-                "Summarize the following document in 1-2 sentences. "
-                "Focus on what it is about and why it might matter. "
-                "Return only the summary, no preamble.\n\n"
-                f"Document:\n{text}"
+                "请用 1-2 句话总结下面这份文档。"
+                "重点说明它是什么，以及它为什么可能重要。"
+                "只返回总结，不要前言。\n\n"
+                f"文档：\n{text}"
             ),
             system=_SUMMARIZE_SYSTEM,
         )
 
     def key_details(self, text: str) -> list[str]:
         if not text.strip():
-            return ["No key details found."]
+            return ["未提取到关键细节。"]
         response = self._call(
             prompt=(
-                "Extract 1-3 key details or facts from the following document. "
-                "Each detail should be one line. Return only the details, one per line, no numbers or bullets.\n\n"
-                f"Document:\n{text}"
+                "请从下面文档中提取 1-3 条关键细节或事实。"
+                "每条单独占一行。只返回内容本身，不要编号或项目符号。\n\n"
+                f"文档：\n{text}"
             ),
         )
         details = [line.strip().lstrip("-").strip() for line in response.splitlines() if line.strip()]
-        return details[:3] if details else ["No key details found."]
+        return details[:3] if details else ["未提取到关键细节。"]
 
     def infer_why_saved(self, title: str, text: str) -> str:
         if not text.strip():
-            return "AI-inferred: empty source, no reason could be inferred."
+            return "AI-inferred: 内容为空，无法推断保存原因。"
         summary = self.summarize(text)
         response = self._call(
             prompt=(
-                f"Source title: '{title}'\n"
-                f"Source summary: {summary}\n\n"
-                "Based on the above, briefly infer why someone might have saved this source. "
-                "What question, project, or decision might it relate to? "
-                "Be honest about uncertainty. Return a single sentence hypothesis."
+                f"材料标题：'{title}'\n"
+                f"材料摘要：{summary}\n\n"
+                "基于以上内容，简要推断一个人为什么可能保存这份材料。"
+                "它可能关联到什么问题、项目或决策？"
+                "要诚实表达不确定性。只返回一句话假设。"
             ),
             system=(
-                "You are helping someone recover their past thinking. "
-                "Your inferences must be clearly labeled as AI-inferred, not user-stated. "
-                "Never claim certainty about the user's motivations."
+                "你在帮助用户恢复过去的思考过程。"
+                "你的推断必须明确标记为 AI-inferred，而不是 user-stated。"
+                "不要声称自己确定知道用户当时的动机。"
             ),
         )
         return f"AI-inferred: {response.strip()}"
 
     def open_loops(self, text: str) -> list[str]:
         if not text.strip():
-            return ["Decide how to use this source later."]
+            return ["之后再决定如何使用这份材料。"]
         response = self._call(
             prompt=(
-                "Identify any open loops, TODOs, unresolved questions, or next actions mentioned "
-                "in the following text. Return each as one line. If none are found, return "
-                "'Decide how to use this source later.'\n\n"
-                f"Text:\n{text}"
+                "请识别下面文本中提到的 open loop、TODO、未解决问题或下一步行动。"
+                "每项单独占一行。"
+                "如果没有找到，就返回“之后再决定如何使用这份材料。”\n\n"
+                f"文本：\n{text}"
             ),
         )
         loops = [line.strip() for line in response.splitlines() if line.strip()]
-        return loops[:3] if loops else ["Decide how to use this source later."]
+        return loops[:3] if loops else ["之后再决定如何使用这份材料。"]
 
     def future_recall_questions(self, title: str, text: str) -> list[str]:
         response = self._call(
             prompt=(
-                f"Source title: '{title}'\n\n"
-                f"Text:\n{text}\n\n"
-                "Generate 2-3 questions someone might ask in the future when trying to recall "
-                "why this source mattered, what decision it supported, or how it connects "
-                "to other work. Return one question per line, no numbers or bullets."
+                f"材料标题：'{title}'\n\n"
+                f"文本：\n{text}\n\n"
+                "请生成 2-3 个未来回忆时可能会问的问题，帮助理解："
+                "这份材料为什么重要、它支持了什么决策、以及它和其他工作如何关联。"
+                "每行一个问题，不要编号或项目符号。"
             ),
         )
         questions = [line.strip() for line in response.splitlines() if line.strip()]
         if not questions:
             return [
-                f"Why did '{title}' matter when it was saved?",
-                f"How does '{title}' connect to my current project or question?",
+                f"保存“{title}”时，它为什么重要？",
+                f"“{title}”和我当前的项目或问题有什么关系？",
             ]
         return questions[:3]
 
@@ -243,9 +261,9 @@ class AnthropicProvider:
             return None
         response = self._call(
             prompt=(
-                "Identify the most likely project or topic area this text relates to. "
-                "Return a single short label (2-5 words) or 'None' if unclear.\n\n"
-                f"Text:\n{text}"
+                "请识别这段文本最可能关联的项目或主题领域。"
+                "返回一个简短标签（2-5 个词）即可；如果不清楚，就返回“None”。\n\n"
+                f"文本：\n{text}"
             ),
         )
         label = response.strip().strip('"')
@@ -278,10 +296,9 @@ class AnthropicProvider:
                         {
                             "type": "text",
                             "text": (
-                                "Describe what is visible in this image in detail. "
-                                "Include any text, UI elements, diagrams, charts, "
-                                "handwriting, or notable visual features. "
-                                "Return only the description."
+                                "请详细描述这张图片里可见的内容。"
+                                "包括文字、UI 元素、图表、手写内容或其他明显视觉特征。"
+                                "只返回描述本身。"
                             ),
                         },
                     ],
@@ -299,21 +316,20 @@ class AnthropicProvider:
         if not contexts:
             return self._call(
                 prompt=(
-                    f"Question: {question}\n\n"
-                    "No matching sources or graph paths were found in the knowledge base."
+                    f"问题：{question}\n\n"
+                    "知识库中没有找到匹配的材料或图谱路径。"
                 ),
                 system=_SYNTHESIZE_SYSTEM,
             )
 
         context_text = _format_contexts_for_prompt(contexts)
-        paths_text = "\n".join(graph_paths) if graph_paths else "No graph paths found."
+        paths_text = "\n".join(graph_paths) if graph_paths else "未找到图谱路径。"
         return self._call(
             prompt=(
-                f"Question: {question}\n\n"
-                f"Retrieved contexts from the knowledge base:\n{context_text}\n\n"
-                f"Graph paths connecting contexts:\n{paths_text}\n\n"
-                "Synthesize an answer following the output structure described in "
-                "the system instructions."
+                f"问题：{question}\n\n"
+                f"从知识库中检索到的上下文：\n{context_text}\n\n"
+                f"连接这些上下文的图谱路径：\n{paths_text}\n\n"
+                "请按照系统说明里的输出结构生成回答。"
             ),
             system=_SYNTHESIZE_SYSTEM,
         )
@@ -356,79 +372,79 @@ class DeepSeekProvider:
 
     def summarize(self, text: str) -> str:
         if not text.strip():
-            return "Empty source."
+            return "空内容。"
         return self._call(
             prompt=(
-                "Summarize the following document in 1-2 sentences. "
-                "Focus on what it is about and why it might matter. "
-                "Return only the summary, no preamble.\n\n"
-                f"Document:\n{text}"
+                "请用 1-2 句话总结下面这份文档。"
+                "重点说明它是什么，以及它为什么可能重要。"
+                "只返回总结，不要前言。\n\n"
+                f"文档：\n{text}"
             ),
             system=_SUMMARIZE_SYSTEM,
         )
 
     def key_details(self, text: str) -> list[str]:
         if not text.strip():
-            return ["No key details found."]
+            return ["未提取到关键细节。"]
         response = self._call(
             prompt=(
-                "Extract 1-3 key details or facts from the following document. "
-                "Each detail should be one line. Return only the details, one per line, no numbers or bullets.\n\n"
-                f"Document:\n{text}"
+                "请从下面文档中提取 1-3 条关键细节或事实。"
+                "每条单独占一行。只返回内容本身，不要编号或项目符号。\n\n"
+                f"文档：\n{text}"
             ),
         )
         details = [line.strip().lstrip("-").strip() for line in response.splitlines() if line.strip()]
-        return details[:3] if details else ["No key details found."]
+        return details[:3] if details else ["未提取到关键细节。"]
 
     def infer_why_saved(self, title: str, text: str) -> str:
         if not text.strip():
-            return "AI-inferred: empty source, no reason could be inferred."
+            return "AI-inferred: 内容为空，无法推断保存原因。"
         summary = self.summarize(text)
         response = self._call(
             prompt=(
-                f"Source title: '{title}'\n"
-                f"Source summary: {summary}\n\n"
-                "Based on the above, briefly infer why someone might have saved this source. "
-                "What question, project, or decision might it relate to? "
-                "Be honest about uncertainty. Return a single sentence hypothesis."
+                f"材料标题：'{title}'\n"
+                f"材料摘要：{summary}\n\n"
+                "基于以上内容，简要推断一个人为什么可能保存这份材料。"
+                "它可能关联到什么问题、项目或决策？"
+                "要诚实表达不确定性。只返回一句话假设。"
             ),
             system=(
-                "You are helping someone recover their past thinking. "
-                "Your inferences must be clearly labeled as AI-inferred, not user-stated. "
-                "Never claim certainty about the user's motivations."
+                "你在帮助用户恢复过去的思考过程。"
+                "你的推断必须明确标记为 AI-inferred，而不是 user-stated。"
+                "不要声称自己确定知道用户当时的动机。"
             ),
         )
         return f"AI-inferred: {response.strip()}"
 
     def open_loops(self, text: str) -> list[str]:
         if not text.strip():
-            return ["Decide how to use this source later."]
+            return ["之后再决定如何使用这份材料。"]
         response = self._call(
             prompt=(
-                "Identify any open loops, TODOs, unresolved questions, or next actions mentioned "
-                "in the following text. Return each as one line. If none are found, return "
-                "'Decide how to use this source later.'\n\n"
-                f"Text:\n{text}"
+                "请识别下面文本中提到的 open loop、TODO、未解决问题或下一步行动。"
+                "每项单独占一行。"
+                "如果没有找到，就返回“之后再决定如何使用这份材料。”\n\n"
+                f"文本：\n{text}"
             ),
         )
         loops = [line.strip() for line in response.splitlines() if line.strip()]
-        return loops[:3] if loops else ["Decide how to use this source later."]
+        return loops[:3] if loops else ["之后再决定如何使用这份材料。"]
 
     def future_recall_questions(self, title: str, text: str) -> list[str]:
         response = self._call(
             prompt=(
-                f"Source title: '{title}'\n\n"
-                f"Text:\n{text}\n\n"
-                "Generate 2-3 questions someone might ask in the future when trying to recall "
-                "why this source mattered, what decision it supported, or how it connects "
-                "to other work. Return one question per line, no numbers or bullets."
+                f"材料标题：'{title}'\n\n"
+                f"文本：\n{text}\n\n"
+                "请生成 2-3 个未来回忆时可能会问的问题，帮助理解："
+                "这份材料为什么重要、它支持了什么决策、以及它和其他工作如何关联。"
+                "每行一个问题，不要编号或项目符号。"
             ),
         )
         questions = [line.strip() for line in response.splitlines() if line.strip()]
         if not questions:
             return [
-                f"Why did '{title}' matter when it was saved?",
-                f"How does '{title}' connect to my current project or question?",
+                f"保存“{title}”时，它为什么重要？",
+                f"“{title}”和我当前的项目或问题有什么关系？",
             ]
         return questions[:3]
 
@@ -437,9 +453,9 @@ class DeepSeekProvider:
             return None
         response = self._call(
             prompt=(
-                "Identify the most likely project or topic area this text relates to. "
-                "Return a single short label (2-5 words) or 'None' if unclear.\n\n"
-                f"Text:\n{text}"
+                "请识别这段文本最可能关联的项目或主题领域。"
+                "返回一个简短标签（2-5 个词）即可；如果不清楚，就返回“None”。\n\n"
+                f"文本：\n{text}"
             ),
         )
         label = response.strip().strip('"')
@@ -464,10 +480,9 @@ class DeepSeekProvider:
                         {
                             "type": "text",
                             "text": (
-                                "Describe what is visible in this image in detail. "
-                                "Include any text, UI elements, diagrams, charts, "
-                                "handwriting, or notable visual features. "
-                                "Return only the description."
+                                "请详细描述这张图片里可见的内容。"
+                                "包括文字、UI 元素、图表、手写内容或其他明显视觉特征。"
+                                "只返回描述本身。"
                             ),
                         },
                     ],
@@ -485,69 +500,90 @@ class DeepSeekProvider:
         if not contexts:
             return self._call(
                 prompt=(
-                    f"Question: {question}\n\n"
-                    "No matching sources or graph paths were found in the knowledge base."
+                    f"问题：{question}\n\n"
+                    "知识库中没有找到匹配的材料或图谱路径。"
                 ),
                 system=_SYNTHESIZE_SYSTEM,
             )
 
         context_text = _format_contexts_for_prompt(contexts)
-        paths_text = "\n".join(graph_paths) if graph_paths else "No graph paths found."
+        paths_text = "\n".join(graph_paths) if graph_paths else "未找到图谱路径。"
         return self._call(
             prompt=(
-                f"Question: {question}\n\n"
-                f"Retrieved contexts from the knowledge base:\n{context_text}\n\n"
-                f"Graph paths connecting contexts:\n{paths_text}\n\n"
-                "Synthesize an answer following the output structure described in "
-                "the system instructions."
+                f"问题：{question}\n\n"
+                f"从知识库中检索到的上下文：\n{context_text}\n\n"
+                f"连接这些上下文的图谱路径：\n{paths_text}\n\n"
+                "请按照系统说明里的输出结构生成回答。"
             ),
             system=_SYNTHESIZE_SYSTEM,
         )
 
 
+class QwenProvider(DeepSeekProvider):
+    provider_name = "qwen"
+    DEFAULT_MODEL = "qwen3-vl-plus"
+    DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    @property
+    def client(self):
+        if self._client is None:
+            from openai import OpenAI
+            import httpx
+
+            http_client = httpx.Client(proxy=None)
+            self._client = OpenAI(
+                api_key=self.api_key,
+                base_url=os.environ.get("SNAPGRAPH_QWEN_BASE_URL", self.DEFAULT_BASE_URL),
+                http_client=http_client,
+            )
+        return self._client
+
+
 _SUMMARIZE_SYSTEM = (
-    "You summarize documents for a personal cognitive knowledge base. "
-    "Be concise and factual. Do not fabricate details."
+    "你在为一个个人认知知识库总结文档。"
+    "请保持简洁、客观，不要编造细节。"
 )
 
-_SYNTHESIZE_SYSTEM = """You answer questions for a cognitive knowledge base called SnapGraph.
-Your answers must follow this structure:
+_SYNTHESIZE_SYSTEM = """你在为一个名为 SnapGraph 的认知知识库回答问题。
+你的回答必须使用中文，并严格遵循下面结构：
 
-## Direct Answer
-A direct answer to the question based on retrieved evidence.
+## 找回的原话
+优先列出 user-stated 原话；没有用户原话时，明确说明只能看到 AI-inferred 线索。
 
-## Recovered Cognitive Context
-For each source: what it is, why it was saved, and whether that reason is user-stated or AI-inferred. Distinguish clearly between these two.
+## 相关材料
+列出直接相关材料，并标明 user-stated / AI-inferred。
 
-## Evidence Sources
-Numbered list of sources with their status (user-stated/AI-inferred).
+## 连接路径
+说明这些材料在知识图谱中如何连接；如果没有路径，也要明确写出来。
 
-## Graph Paths
-How the sources are connected in the knowledge graph (if paths exist).
+## 涌现洞见
+只基于检索证据说明这些材料串起来之后，当前最值得注意的新判断是什么。
 
-## Suggested Next Action
-Most actionable open loop or next step from the retrieved contexts.
+## 下一步
+从检索出的上下文中给出最可执行的 open loop 或下一步行动。
 
-Rules:
-- ALWAYS distinguish user-stated from AI-inferred contexts.
-- If all contexts are AI-inferred with low confidence, say so clearly.
-- NEVER fabricate certainty about the user's intent or memory.
-- Cite specific sources as evidence.
-- If confidence is low, still provide what information is available but flag the uncertainty."""
+规则：
+- 必须始终区分 user-stated 和 AI-inferred 上下文。
+- 如果所有上下文都是低置信度的 AI-inferred，要明确说明。
+- 不要假装确定知道用户当时的意图或记忆。
+- 要引用具体材料作为证据。
+- 如果置信度低，仍可提供已有信息，但必须明确标出不确定性。
+- 不要使用 emoji、横线分隔符或“这是个好问题”一类寒暄。
+- 优先恢复当时留下的原话，再解释它和当前问题的关系。"""
 
 
 def _format_contexts_for_prompt(contexts: list[dict]) -> str:
     parts = []
     for i, context in enumerate(contexts, start=1):
         parts.append(
-            f"Source {i}: '{context.get('title', '')}'\n"
-            f"  Space: {context.get('space_name') or context.get('graph_space_id') or 'Default'}\n"
-            f"  Why saved: {context.get('why_saved', '')}\n"
-            f"  Status: {context.get('why_saved_status', '')}\n"
-            f"  Related project: {context.get('related_project') or 'None'}\n"
-            f"  Source excerpt: {context.get('source_excerpt') or 'None'}\n"
+            f"材料 {i}: '{context.get('title', '')}'\n"
+            f"  空间: {context.get('space_name') or context.get('graph_space_id') or '默认空间'}\n"
+            f"  保存原因: {context.get('why_saved', '')}\n"
+            f"  状态: {context.get('why_saved_status', '')}\n"
+            f"  相关项目: {context.get('related_project') or 'None'}\n"
+            f"  材料摘录: {context.get('source_excerpt') or 'None'}\n"
             f"  Open loops: {', '.join(context.get('open_loops', []))}\n"
-            f"  Future recall questions: {'; '.join(context.get('future_recall_questions', []))}"
+            f"  未来回忆问题: {'; '.join(context.get('future_recall_questions', []))}"
         )
     return "\n\n".join(parts)
 
