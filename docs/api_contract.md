@@ -28,7 +28,8 @@ If a real provider is configured but the key is missing, provider-backed endpoin
 - `GET /api/workspace`: source/question counts, graph counts, lint state, graph insights, provider status.
 - `GET /api/sources`: source rows with cognitive context.
 - `GET /api/sources/{source_id}`: generated source Markdown and structured detail.
-- `POST /api/ingest`: multipart file plus optional `why`; supports `.md`, `.markdown`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`.
+- `PATCH /api/sources/{source_id}/context`: confirm or correct `why_saved`, project/theme, and open loops.
+- `POST /api/ingest`: multipart file plus optional short `why` hint; supports `.md`, `.markdown`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.webp`.
 - `POST /api/ask`: JSON `{ "question": "...", "save": false }`; returns answer, contexts, graph paths, diagnostics, provider metadata.
 - `GET /api/graph`: graph JSON plus diagnostics and insights.
 - `GET /api/report`: current Markdown graph report.

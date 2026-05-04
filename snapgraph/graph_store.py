@@ -13,6 +13,8 @@ from .models import (
     GraphEdge,
     GraphNode,
     Source,
+    is_ai_inferred_status,
+    is_user_guided_status,
 )
 from .workspace import Workspace
 
@@ -22,12 +24,31 @@ def upsert_ingest_graph(
     source: Source,
     context: CognitiveContext,
 ) -> tuple[list[GraphNode], list[GraphEdge]]:
+    return replace_source_graph(workspace, source, context)
+
+
+def replace_source_graph(
+    workspace: Workspace,
+    source: Source,
+    context: CognitiveContext,
+) -> tuple[list[GraphNode], list[GraphEdge]]:
     nodes, edges = build_ingest_graph(source, context, space_id=source.graph_space_id)
     graph = load_graph(workspace)
+    graph["nodes"] = [
+        node
+        for node in graph.get("nodes", [])
+        if not _node_belongs_to_source(node, source.id)
+    ]
+    graph["edges"] = [
+        edge
+        for edge in graph.get("edges", [])
+        if edge.get("evidence_source_id") != source.id
+    ]
     graph["nodes"] = _upsert_items(graph.get("nodes", []), nodes)
     graph["edges"] = _upsert_items(graph.get("edges", []), edges)
+    graph = _prune_orphan_support_nodes(graph)
     save_graph(workspace, graph)
-    _save_sqlite(workspace, nodes, edges)
+    _rewrite_sqlite_graph(workspace, graph)
     return nodes, edges
 
 
@@ -112,29 +133,6 @@ def build_ingest_graph(
             status="confirmed",
         ),
     ]
-
-    for index, question in enumerate(context.future_recall_questions, start=1):
-        question_node = GraphNode(
-            id=f"question_{source.id}_{index}",
-            type="question",
-            label=question,
-            properties={"source_id": source.id},
-            graph_space_id=graph_space_id,
-            status="proposed",
-        )
-        nodes.append(question_node)
-        edges.append(
-            GraphEdge(
-                id=_edge_id(source_node.id, question_node.id, "follow_up"),
-                source=source_node.id,
-                target=question_node.id,
-                relation="follow_up",
-                evidence_source_id=source.id,
-                confidence=0.9,
-                graph_space_id=graph_space_id,
-                status="proposed",
-            )
-        )
 
     for index, open_loop in enumerate(context.open_loops, start=1):
         task_node = GraphNode(
@@ -338,6 +336,15 @@ def _save_sqlite(
             )
 
 
+def _rewrite_sqlite_graph(workspace: Workspace, graph: dict) -> None:
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        conn.execute("DELETE FROM nodes")
+        conn.execute("DELETE FROM edges")
+    nodes = [_node_from_dict(node) for node in graph.get("nodes", [])]
+    edges = [_edge_from_dict(edge) for edge in graph.get("edges", [])]
+    _save_sqlite(workspace, nodes, edges)
+
+
 def _edge_id(source: str, target: str, relation: str) -> str:
     digest = hashlib.sha1(f"{source}|{target}|{relation}".encode("utf-8")).hexdigest()
     return f"edge_{digest[:12]}"
@@ -459,8 +466,12 @@ def _project_clusters(contexts: list[dict]) -> list[dict]:
             {
                 "project": project,
                 "source_count": len(members),
-                "user_stated": sum(1 for m in members if m["why_saved_status"] == "user-stated"),
-                "ai_inferred": sum(1 for m in members if m["why_saved_status"] == "AI-inferred"),
+                "user_stated": sum(
+                    1 for m in members if is_user_guided_status(m["why_saved_status"])
+                ),
+                "ai_inferred": sum(
+                    1 for m in members if is_ai_inferred_status(m["why_saved_status"])
+                ),
                 "average_confidence": round(
                     sum(m["confidence"] for m in members) / max(1, len(members)),
                     2,
@@ -564,7 +575,7 @@ def _low_confidence_contexts(contexts: list[dict]) -> list[dict]:
             "why_saved": context["why_saved"],
         }
         for context in contexts
-        if context["why_saved_status"] == "AI-inferred" and context["confidence"] < 0.7
+        if is_ai_inferred_status(context["why_saved_status"]) and context["confidence"] < 0.7
     ][:10]
 
 
@@ -613,7 +624,11 @@ def _high_value_review_paths(contexts: list[dict]) -> list[dict]:
                 )
     return sorted(
         paths,
-        key=lambda item: (item["status"] != "user-stated", -item["confidence"], item["title"]),
+        key=lambda item: (
+            not is_user_guided_status(item["status"]),
+            -item["confidence"],
+            item["title"],
+        ),
     )[:10]
 
 
@@ -644,3 +659,69 @@ def _slug(label: str) -> str:
     if slug:
         return slug
     return hashlib.sha1(label.encode("utf-8")).hexdigest()[:12]
+
+
+def _node_belongs_to_source(node: dict, source_id: str) -> bool:
+    node_source_id = node.get("properties", {}).get("source_id")
+    if node_source_id == source_id:
+        return True
+    prefixes = (
+        f"source_{source_id}",
+        f"thought_{source_id}",
+        f"task_{source_id}_",
+        f"question_{source_id}_",
+    )
+    return str(node.get("id", "")).startswith(prefixes)
+
+
+def _prune_orphan_support_nodes(graph: dict) -> dict:
+    removable_types = {"project", "question", "task", "thought"}
+    changed = True
+    nodes = list(graph.get("nodes", []))
+    edges = list(graph.get("edges", []))
+    while changed:
+        changed = False
+        linked = set()
+        for edge in edges:
+            linked.add(edge.get("source"))
+            linked.add(edge.get("target"))
+        kept_nodes = []
+        removed_ids = set()
+        for node in nodes:
+            if node.get("type") in removable_types and node.get("id") not in linked:
+                removed_ids.add(node.get("id"))
+                changed = True
+                continue
+            kept_nodes.append(node)
+        if removed_ids:
+            nodes = kept_nodes
+            edges = [
+                edge
+                for edge in edges
+                if edge.get("source") not in removed_ids and edge.get("target") not in removed_ids
+            ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def _node_from_dict(node: dict) -> GraphNode:
+    return GraphNode(
+        id=str(node.get("id", "")),
+        type=str(node.get("type", "unknown")),
+        label=str(node.get("label", "")),
+        properties=dict(node.get("properties", {})),
+        graph_space_id=str(node.get("graph_space_id", DEFAULT_GRAPH_SPACE_ID)),
+        status=str(node.get("status", "confirmed")),
+    )
+
+
+def _edge_from_dict(edge: dict) -> GraphEdge:
+    return GraphEdge(
+        id=str(edge.get("id", "")),
+        source=str(edge.get("source", "")),
+        target=str(edge.get("target", "")),
+        relation=str(edge.get("relation", "")),
+        evidence_source_id=edge.get("evidence_source_id"),
+        confidence=float(edge.get("confidence", 0)),
+        graph_space_id=str(edge.get("graph_space_id", DEFAULT_GRAPH_SPACE_ID)),
+        status=str(edge.get("status", "confirmed")),
+    )

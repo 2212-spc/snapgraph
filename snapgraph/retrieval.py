@@ -7,8 +7,14 @@ from pathlib import Path
 
 from .config import load_config
 from .graph_store import graph_for_space, load_graph
-from .models import DEFAULT_GRAPH_SPACE_ID
-from .models import RetrievedContext, RetrievalDiagnostics, RetrievalResult
+from .models import (
+    DEFAULT_GRAPH_SPACE_ID,
+    RetrievedContext,
+    RetrievalDiagnostics,
+    RetrievalResult,
+    is_ai_inferred_status,
+    is_user_guided_status,
+)
 from .workspace import Workspace
 
 
@@ -82,10 +88,10 @@ def retrieve_for_question(
         expanded_nodes=len(expanded_node_ids),
         source_pages_used=len(contexts),
         user_stated_contexts=sum(
-            1 for context in contexts if context.why_saved_status == "user-stated"
+            1 for context in contexts if is_user_guided_status(context.why_saved_status)
         ),
         ai_inferred_contexts=sum(
-            1 for context in contexts if context.why_saved_status == "AI-inferred"
+            1 for context in contexts if is_ai_inferred_status(context.why_saved_status)
         ),
         top_candidate_reasons=[
             f"{context.title}: {', '.join(candidate_reasons.get(context.source_id, ['matched']))}"

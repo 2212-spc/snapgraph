@@ -398,12 +398,11 @@ def _choose_target_space(profile: dict, spaces: list[dict]) -> tuple[dict, list[
     if best_score <= 0:
         best_space = _default_space(spaces)
         confidence = 0.52
-        reason = "No strong space match; keep as a reviewable suggestion for Default."
+        reason = "没有明显更强的空间匹配，先保留为可复查的“默认空间”建议。"
     else:
         confidence = min(0.88, 0.58 + best_score * 0.1)
         reason = (
-            f"Matched capture signals to `{best_space['name']}` "
-            f"using title, saved reason, and related project text."
+            f"根据标题、保存理由和相关项目文本，当前更匹配“{best_space['name']}”。"
         )
     alternatives = [
         {

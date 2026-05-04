@@ -100,8 +100,8 @@ def test_answer_space_filter_and_no_match_fail_closed(tmp_path: Path) -> None:
 
     assert inbox_answer.retrieval.contexts
     assert default_answer.retrieval.contexts == []
-    assert "Low confidence" in default_answer.text
-    assert "Low confidence" in no_match.text
+    assert "低置信度" in default_answer.text
+    assert "低置信度" in no_match.text
 
 
 def test_api_spaces_inbox_suggestions_and_accept_flow(tmp_path: Path, monkeypatch) -> None:

@@ -153,14 +153,14 @@ def test_lint_reports_question_page_missing_diagnostics(tmp_path: Path) -> None:
     page = save_answer(workspace, answer_question(workspace, "LLM Wiki"))
     page_text = page.absolute_page_path.read_text(encoding="utf-8")
     page.absolute_page_path.write_text(
-        page_text.replace("## Retrieval Diagnostics", "## Missing Diagnostics"),
+        page_text.replace("## 检索诊断", "## Missing Diagnostics"),
         encoding="utf-8",
     )
 
     result = lint_workspace(workspace)
 
     assert result.status == "WARN"
-    assert any("missing section: ## Retrieval Diagnostics" in warning for warning in result.warnings)
+    assert any("missing section: ## 检索诊断" in warning for warning in result.warnings)
 
 
 def test_lint_reports_question_page_dead_evidence_link(tmp_path: Path) -> None:

@@ -8,7 +8,7 @@ from snapgraph.workspace import Workspace, create_workspace
 
 class BodyOnlyLLM:
     def synthesize_answer(self, question: str, contexts: list[dict], graph_paths: list[str]) -> str:
-        return "# Answer\n## Direct Answer\nProvider body."
+        return "# 回答\n## 直接回答\nProvider body."
 
 
 def test_ask_recovers_llm_wiki_context_with_graph_paths(tmp_path: Path) -> None:
@@ -16,18 +16,18 @@ def test_ask_recovers_llm_wiki_context_with_graph_paths(tmp_path: Path) -> None:
 
     answer = answer_question(workspace, "我为什么要从 LLM Wiki 开始？")
 
-    assert "## Direct Answer" in answer.text
-    assert "## Recovered Cognitive Context" in answer.text
-    assert "## Evidence Sources" in answer.text
-    assert "## Graph Paths" in answer.text
-    assert "## Retrieval Diagnostics" in answer.text
+    assert "## 直接回答" in answer.text
+    assert "## 恢复出的认知上下文" in answer.text
+    assert "## 证据来源" in answer.text
+    assert "## 图谱路径" in answer.text
+    assert "## 检索诊断" in answer.text
     assert "LLM Wiki Note" in answer.text
     assert "wiki/sources/" in answer.text
-    assert "- graph node hits:" in answer.text
+    assert "- 图节点命中：" in answer.text
     assert answer.retrieval.diagnostics.source_pages_used >= 1
     assert answer.retrieval.graph_paths
     assert any("-> triggered_thought ->" in path for path in answer.retrieval.graph_paths)
-    assert "because it connected to" in answer.text
+    assert "因为它和" in answer.text
     assert "(`" in answer.text
 
 
@@ -48,9 +48,9 @@ def test_ask_no_match_is_low_confidence_and_does_not_fabricate(tmp_path: Path) -
 
     answer = answer_question(workspace, "unrelated quantum pineapple")
 
-    assert "Low confidence" in answer.text
-    assert "I will not infer a reason without evidence" in answer.text
-    assert "Evidence Sources\nNone" in answer.text
+    assert "低置信度" in answer.text
+    assert "我不会推断保存原因" in answer.text
+    assert "## 证据来源\n无" in answer.text
     assert answer.retrieval.diagnostics.source_pages_used == 0
 
 
@@ -109,8 +109,8 @@ def test_provider_answer_still_appends_retrieval_diagnostics(tmp_path: Path) -> 
     answer = answer_question(workspace, "我为什么要从 LLM Wiki 开始？", llm=BodyOnlyLLM())
 
     assert "Provider body." in answer.text
-    assert "## Retrieval Diagnostics" in answer.text
-    assert "- keyword hits:" in answer.text
+    assert "## 检索诊断" in answer.text
+    assert "- 关键词命中：" in answer.text
 
 
 def test_save_answer_writes_question_page_index_and_log(tmp_path: Path) -> None:
@@ -128,7 +128,7 @@ def test_save_answer_writes_question_page_index_and_log(tmp_path: Path) -> None:
     assert "## Answer" in page_text
     assert "## Evidence Source Pages" in page_text
     assert "wiki/sources/" in page_text
-    assert "## Retrieval Diagnostics" in page_text
+    assert "## 检索诊断" in page_text
 
     index_text = workspace.index_path.read_text(encoding="utf-8")
     assert f"questions/{page.id}.md" in index_text
@@ -147,9 +147,9 @@ def test_save_low_confidence_answer_is_traceable(tmp_path: Path) -> None:
     page = save_answer(workspace, answer)
     page_text = page.absolute_page_path.read_text(encoding="utf-8")
 
-    assert "Low confidence" in page_text
+    assert "低置信度" in page_text
     assert "## Evidence Source Pages\n- None" in page_text
-    assert "## Retrieval Diagnostics" in page_text
+    assert "## 检索诊断" in page_text
 
 
 def _workspace_with_demo_sources(tmp_path: Path) -> Workspace:

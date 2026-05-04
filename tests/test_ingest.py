@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from snapgraph.ingest import ingest_source
+from snapgraph.ingest import ingest_source, update_cognitive_context
 from snapgraph.workspace import Workspace, create_workspace
 
 
@@ -40,7 +40,7 @@ def test_ingest_markdown_creates_raw_page_index_and_log(tmp_path: Path) -> None:
     assert result.page.relative_page_path in log_text
 
 
-def test_ingest_preserves_user_stated_why_exactly(tmp_path: Path) -> None:
+def test_ingest_uses_user_hint_to_guide_inference(tmp_path: Path) -> None:
     source_path = tmp_path / "note.md"
     source_path.write_text("# Test Note\n\nSnapGraph source.\n", encoding="utf-8")
     workspace = Workspace(tmp_path)
@@ -49,12 +49,14 @@ def test_ingest_preserves_user_stated_why_exactly(tmp_path: Path) -> None:
 
     result = ingest_source(workspace, source_path, why=why)
 
-    assert result.cognitive_context.why_saved == why
-    assert result.cognitive_context.why_saved_status == "user-stated"
+    assert result.cognitive_context.why_saved != why
+    assert result.cognitive_context.why_saved_status == "user-guided"
+    assert result.cognitive_context.confidence == 0.85
 
     page_text = result.page.absolute_page_path.read_text(encoding="utf-8")
-    assert f"- Why this may have been saved: {why}" in page_text
-    assert "- Status: user-stated" in page_text
+    assert "- Why this may have been saved:" in page_text
+    assert "- Status: user-guided" in page_text
+    assert "## Supportive Signals" in page_text
 
     with sqlite3.connect(workspace.sqlite_path) as conn:
         row = conn.execute(
@@ -65,7 +67,7 @@ def test_ingest_preserves_user_stated_why_exactly(tmp_path: Path) -> None:
             """,
             (result.source.id,),
         ).fetchone()
-    assert row == (why, "user-stated")
+    assert row == (result.cognitive_context.why_saved, "user-guided")
 
 
 def test_ingest_without_why_is_ai_inferred(tmp_path: Path) -> None:
@@ -132,8 +134,39 @@ def test_experimental_image_ingest_uses_mock_placeholder(tmp_path: Path) -> None
 
     assert result.source.type == "screenshot"
     assert result.raw_path.parent.name == "screenshots"
-    assert "visual content not available" in (result.source.summary or "")
+    assert "无法读取视觉内容" in (result.source.summary or "")
 
     page_text = result.page.absolute_page_path.read_text(encoding="utf-8")
     assert "type: screenshot" in page_text
-    assert "Use a vision-enabled LLM provider" in page_text
+    assert "支持视觉能力的 LLM provider" in page_text
+
+
+def test_update_cognitive_context_rewrites_graph_and_page(tmp_path: Path) -> None:
+    source_path = tmp_path / "note.md"
+    source_path.write_text("# Test Note\n\nOpen loop: first draft.\n", encoding="utf-8")
+    workspace = Workspace(tmp_path)
+    create_workspace(workspace)
+    result = ingest_source(workspace, source_path)
+
+    updated = update_cognitive_context(
+        workspace,
+        result.source.id,
+        why_saved="This became relevant to the thesis structure.",
+        related_project="Thesis proposal",
+        open_loops=["Confirm the methods section framing."],
+        confirm=True,
+    )
+
+    assert updated.why_saved_status == "user-stated"
+    assert updated.confidence == 1.0
+    assert updated.related_project == "Thesis proposal"
+    assert updated.open_loops == ["Confirm the methods section framing."]
+
+    page_text = result.page.absolute_page_path.read_text(encoding="utf-8")
+    assert "This became relevant to the thesis structure." in page_text
+    assert "- Status: user-stated" in page_text
+    assert "Confirm the methods section framing." in page_text
+
+    graph = json.loads(workspace.graph_path.read_text(encoding="utf-8"))
+    assert any(node["type"] == "project" and node["label"] == "Thesis proposal" for node in graph["nodes"])
+    assert not any(node["type"] == "question" and result.source.id in node["id"] for node in graph["nodes"])

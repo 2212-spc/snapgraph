@@ -40,7 +40,7 @@ Capture material -> Recall a judgment -> Inspect evidence paths -> Write back to
 │   ├── questions/       saved answers
 │   └── graph_report.md  cognitive graph report
 ├── memory/
-│   ├── graph.json       source/thought/project/task/question graph
+│   ├── graph.json       source/thought/project/task graph
 │   └── snapgraph.sqlite queryable metadata mirror
 └── config.yaml          provider and retrieval settings, never API keys
 ```
@@ -75,8 +75,12 @@ MockLLM is deterministic and best for tests. DeepSeek is the default manual qual
 ```bash
 export SNAPGRAPH_LLM_API_KEY="..."
 snapgraph config set-llm-provider deepseek
+snapgraph config set-llm-model deepseek-v4-flash
 snapgraph ask "这些材料共同支持 SnapGraph 的哪条产品判断？"
 ```
+
+Supported DeepSeek API model names currently include `deepseek-v4-flash` and `deepseek-v4-pro`.
+The older `deepseek-v4` identifier is rejected by the API.
 
 Do not put real keys in `config.yaml`, `.env`, wiki pages, evaluation reports, or issue logs.
 
@@ -117,6 +121,13 @@ The app is organized around:
 Recall / Capture / Memory / Paths / Report / Settings
 ```
 
+Current product semantics are:
+
+- `Capture`: save a source plus an optional short hint about why it may matter.
+- `Recall`: recover evidence paths and saved reasoning, not generic chat answers.
+- `Graph`: center the main graph on `source / thought / related project / open loop`.
+- `Report`: surface low-confidence AI-inferred context so it can be confirmed or corrected.
+
 ## Tests
 
 ```bash
@@ -126,7 +137,7 @@ conda run -n snapgraph-dev pytest -q
 Current expected baseline:
 
 ```text
-54+ tests passing
+70 tests passing
 ```
 
 FastAPI may emit `on_event` deprecation warnings; they do not affect current behavior.

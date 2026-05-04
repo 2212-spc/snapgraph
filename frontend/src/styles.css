@@ -144,6 +144,7 @@ button {
 .config-row select:focus,
 .config-row input:focus,
 .inline-controls select:focus,
+.quick-correct input:focus,
 .create-space input:focus,
 .create-space textarea:focus,
 .question-input:focus,
@@ -151,6 +152,22 @@ button {
   outline: 0;
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(49, 94, 168, 0.14);
+}
+
+.quick-correct {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.quick-correct input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 11px;
+  min-width: 0;
 }
 
 .runtime {

@@ -33,8 +33,8 @@ def test_ask_cli_prints_retrieval_diagnostics(tmp_path: Path, monkeypatch) -> No
     ask_result = runner.invoke(app, ["ask", "LLM Wiki"])
 
     assert ask_result.exit_code == 0
-    assert "## Retrieval Diagnostics" in ask_result.stdout
-    assert "- keyword hits:" in ask_result.stdout
+    assert "## 检索诊断" in ask_result.stdout
+    assert "- 关键词命中：" in ask_result.stdout
 
 
 def test_ask_cli_save_writes_question_page(tmp_path: Path, monkeypatch) -> None:
@@ -51,7 +51,7 @@ def test_ask_cli_save_writes_question_page(tmp_path: Path, monkeypatch) -> None:
     assert ask_result.exit_code == 0
     assert "Saved answer: wiki/questions/" in ask_result.stdout
     assert len(question_pages) == 1
-    assert "## Retrieval Diagnostics" in question_pages[0].read_text(encoding="utf-8")
+    assert "## 检索诊断" in question_pages[0].read_text(encoding="utf-8")
 
 
 def test_ask_cli_without_save_does_not_write_question_page(tmp_path: Path, monkeypatch) -> None:
@@ -83,7 +83,7 @@ def test_report_cli_writes_graph_report(tmp_path: Path, monkeypatch) -> None:
     assert report_result.exit_code == 0
     assert "Cognitive graph report: wiki/graph_report.md" in report_result.stdout
     assert report_path.exists()
-    assert "## Corpus Summary" in report_path.read_text(encoding="utf-8")
+    assert "## 语料概览" in report_path.read_text(encoding="utf-8")
 
 
 def test_demo_cli_help_is_available() -> None:

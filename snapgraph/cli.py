@@ -40,7 +40,7 @@ def ingest_command(
     why: str | None = typer.Option(
         None,
         "--why",
-        help="Optional user-stated note for why this source was saved.",
+        help="Optional short user hint to guide why this source was saved.",
     ),
 ) -> None:
     """Ingest a markdown or text source into the workspace."""

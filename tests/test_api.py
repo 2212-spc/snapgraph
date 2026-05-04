@@ -24,7 +24,7 @@ def test_api_demo_exposes_sources_questions_and_graph_insights(tmp_path: Path, m
 
     sources = sources_response.json()
     assert any(source["title"] == "LLM Wiki Note" for source in sources)
-    assert any(source["why_saved_status"] == "user-stated" for source in sources)
+    assert any(source["why_saved_status"] == "user-guided" for source in sources)
 
     insights = graph_response.json()["insights"]
     assert insights["project_clusters"]
@@ -134,3 +134,30 @@ def test_api_fails_fast_when_real_provider_key_is_missing_for_evidence(
     assert detail["configured_provider"] == "deepseek"
     assert detail["provider_ready"] is False
     assert detail["fallback_used"] is False
+
+
+def test_api_can_confirm_and_correct_context(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Note\n\nOpen loop: keep revising.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    response = client.patch(
+        f"/api/sources/{source_id}/context",
+        json={
+            "why_saved": "This matters for the proposal narrative.",
+            "related_project": "Thesis proposal",
+            "open_loops": ["Rewrite the proposal framing."],
+            "confirm": True,
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()["detail"]
+    assert detail["why_saved_status"] == "user-stated"
+    assert detail["why_saved"] == "This matters for the proposal narrative."
+    assert detail["related_project"] == "Thesis proposal"
+    assert detail["open_loops"] == ["Rewrite the proposal framing."]

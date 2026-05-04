@@ -6,6 +6,15 @@ from pathlib import Path
 
 INBOX_GRAPH_SPACE_ID = "inbox"
 DEFAULT_GRAPH_SPACE_ID = "default"
+USER_GUIDED_CONTEXT_STATUSES = {"user-stated", "user-guided"}
+
+
+def is_user_guided_status(status: str) -> bool:
+    return status in USER_GUIDED_CONTEXT_STATUSES
+
+
+def is_ai_inferred_status(status: str) -> bool:
+    return status == "AI-inferred"
 
 
 @dataclass(frozen=True)

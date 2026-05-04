@@ -21,21 +21,21 @@ REQUIRED_QUESTION_SECTIONS = [
     "## Question",
     "## Answer",
     "## Evidence Source Pages",
-    "## Retrieval Diagnostics",
+    "## 检索诊断",
 ]
 
 REQUIRED_REPORT_SECTIONS = [
-    "## Corpus Summary",
-    "## Confidence & Audit Trail",
-    "## Top Hubs",
+    "## 语料概览",
+    "## 置信度与审计轨迹",
+    "## 关键枢纽",
     "## Open Loops",
-    "## Saved Questions",
-    "## Graph Paths Worth Reviewing",
-    "## Suggested Next Questions",
-    "## Lint Summary",
+    "## 已保存问题",
+    "## 值得复查的图谱路径",
+    "## 建议的后续问题",
+    "## 检查摘要",
 ]
 
-VALID_CONTEXT_STATUSES = {"user-stated", "AI-inferred", "unknown"}
+VALID_CONTEXT_STATUSES = {"user-stated", "user-guided", "AI-inferred", "unknown"}
 
 
 def lint_workspace(workspace: Workspace) -> LintResult:
@@ -153,7 +153,7 @@ def _check_source_page(
     if status == "AI-inferred" and "AI-inferred" not in page_text:
         warnings.append(f"{page_path.name} AI-inferred context is not visibly labeled")
 
-    if "- Future recall questions:\n  -" not in page_text:
+    if "## Supportive Signals" not in page_text:
         warnings.append(f"{page_path.name} has no future recall questions")
 
     relative_page = workspace.relative_to_workspace(page_path)
@@ -311,8 +311,8 @@ def _check_cognitive_context_against_page(
     if row is None:
         return
     why_saved, why_saved_status = row
-    if why_saved_status == "user-stated" and why_saved not in page_text:
-        warnings.append(f"{source_id} user-stated why_saved is not preserved in source page")
+    if why_saved_status in {"user-stated", "user-guided"} and why_saved not in page_text:
+        warnings.append(f"{source_id} user-guided why_saved is not preserved in source page")
 
 
 def _check_graph(

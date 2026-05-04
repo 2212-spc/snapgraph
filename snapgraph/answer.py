@@ -6,6 +6,13 @@ from .llm import LLMProvider
 from .retrieval import retrieve_for_question
 from .workspace import Workspace
 
+ANSWER_DIRECT = "## 直接回答"
+ANSWER_CONTEXT = "## 恢复出的认知上下文"
+ANSWER_EVIDENCE = "## 证据来源"
+ANSWER_PATHS = "## 图谱路径"
+ANSWER_NEXT = "## 建议的下一步"
+ANSWER_DIAGNOSTICS = "## 检索诊断"
+
 
 def answer_question(
     workspace: Workspace,
@@ -53,37 +60,37 @@ def save_answer(workspace: Workspace, answer: AnswerResult) -> QuestionPage:
 def ensure_answer_contract(text: str, retrieval: RetrievalResult) -> str:
     """Keep real provider answers auditable even when the model omits sections."""
     additions: list[str] = []
-    if "## Recovered Cognitive Context" not in text:
+    if ANSWER_CONTEXT not in text:
         additions.extend(
             [
-                "## Recovered Cognitive Context",
+                ANSWER_CONTEXT,
                 _contract_context_lines(retrieval),
                 "",
             ]
         )
-    if "## Evidence Sources" not in text:
+    if ANSWER_EVIDENCE not in text:
         additions.extend(
             [
-                "## Evidence Sources",
+                ANSWER_EVIDENCE,
                 _contract_evidence_lines(retrieval),
                 "",
             ]
         )
-    if "## Graph Paths" not in text:
-        graph_paths = retrieval.graph_paths or ["None."]
+    if ANSWER_PATHS not in text:
+        graph_paths = retrieval.graph_paths or ["无。"]
         additions.extend(
             [
-                "## Graph Paths",
+                ANSWER_PATHS,
                 "```text",
                 *graph_paths,
                 "```",
                 "",
             ]
         )
-    if "## Suggested Next Action" not in text:
+    if ANSWER_NEXT not in text:
         additions.extend(
             [
-                "## Suggested Next Action",
+                ANSWER_NEXT,
                 _contract_next_action(retrieval),
                 "",
             ]
@@ -94,13 +101,13 @@ def ensure_answer_contract(text: str, retrieval: RetrievalResult) -> str:
 
 
 def ensure_retrieval_diagnostics(text: str, retrieval: RetrievalResult) -> str:
-    if "## Retrieval Diagnostics" in text:
+    if ANSWER_DIAGNOSTICS in text:
         return text
     return "\n".join(
         [
             text.rstrip(),
             "",
-            "## Retrieval Diagnostics",
+            ANSWER_DIAGNOSTICS,
             render_retrieval_diagnostics(retrieval),
         ]
     )
@@ -126,7 +133,7 @@ def render_answer(retrieval: RetrievalResult) -> str:
         )
         for index, context in enumerate(contexts, start=1)
     ]
-    graph_path_lines = retrieval.graph_paths or ["No graph path found."]
+    graph_path_lines = retrieval.graph_paths or ["未找到图路径。"]
     next_action = (
         open_loops[0]
         if open_loops
@@ -135,32 +142,32 @@ def render_answer(retrieval: RetrievalResult) -> str:
 
     return "\n".join(
         [
-            "# Answer",
-            "## Direct Answer",
+            "# 回答",
+            ANSWER_DIRECT,
             _direct_answer(primary, next_action),
             "",
-            "## Recovered Cognitive Context",
-            f"Status mix: {_format_status_counts(status_counts)}.",
+            ANSWER_CONTEXT,
+            f"状态分布：{_format_status_counts(status_counts)}。",
             *[
                 (
-                    f"- `{context.title}`: {context.why_saved} "
+                    f"- `{context.title}`：{context.why_saved} "
                     f"({context.why_saved_status})"
                 )
                 for context in contexts
             ],
             "",
-            "## Evidence Sources",
+            ANSWER_EVIDENCE,
             *evidence_lines,
             "",
-            "## Graph Paths",
+            ANSWER_PATHS,
             "```text",
             *graph_path_lines,
             "```",
             "",
-            "## Suggested Next Action",
+            ANSWER_NEXT,
             next_action,
             "",
-            "## Retrieval Diagnostics",
+            ANSWER_DIAGNOSTICS,
             render_retrieval_diagnostics(retrieval),
         ]
     )
@@ -169,25 +176,25 @@ def render_answer(retrieval: RetrievalResult) -> str:
 def _render_no_answer(retrieval: RetrievalResult) -> str:
     return "\n".join(
         [
-            "# Answer",
-            "## Direct Answer",
-            "Low confidence: I could not find matching wiki pages or graph paths. I will not infer a reason without evidence.",
+            "# 回答",
+            ANSWER_DIRECT,
+            "低置信度：我没有找到匹配的 wiki 页面或图谱路径。在缺少证据时，我不会推断保存原因。",
             "",
-            "## Recovered Cognitive Context",
-            "None.",
+            ANSWER_CONTEXT,
+            "无。",
             "",
-            "## Evidence Sources",
-            "None.",
+            ANSWER_EVIDENCE,
+            "无。",
             "",
-            "## Graph Paths",
+            ANSWER_PATHS,
             "```text",
-            "None.",
+            "无。",
             "```",
             "",
-            "## Suggested Next Action",
-            "Ingest a relevant source or add a user-stated `--why` note before asking again.",
+            ANSWER_NEXT,
+            "先导入相关材料，或补一条简短的 `--why` 提示，再重新提问。",
             "",
-            "## Retrieval Diagnostics",
+            ANSWER_DIAGNOSTICS,
             render_retrieval_diagnostics(retrieval),
         ]
     )
@@ -195,10 +202,10 @@ def _render_no_answer(retrieval: RetrievalResult) -> str:
 
 def _contract_context_lines(retrieval: RetrievalResult) -> str:
     if not retrieval.contexts:
-        return "None."
+        return "无。"
     return "\n".join(
         (
-            f"- `{context.title}`: {context.why_saved} "
+            f"- `{context.title}`：{context.why_saved} "
             f"({context.why_saved_status})"
         )
         for context in retrieval.contexts
@@ -207,7 +214,7 @@ def _contract_context_lines(retrieval: RetrievalResult) -> str:
 
 def _contract_evidence_lines(retrieval: RetrievalResult) -> str:
     if not retrieval.contexts:
-        return "None."
+        return "无。"
     return "\n".join(
         (
             f"{index}. `{context.title}` - {context.source_page} "
@@ -223,8 +230,8 @@ def _contract_next_action(retrieval: RetrievalResult) -> str:
             if open_loop and open_loop != "None":
                 return open_loop
     if retrieval.contexts:
-        return f"Review {retrieval.contexts[0].source_page} and confirm whether the recovered reason is still accurate."
-    return "Ingest a relevant source or add a user-stated `--why` note before asking again."
+        return f"回看 {retrieval.contexts[0].source_page}，确认恢复出的保存理由是否仍然准确。"
+    return "先导入相关材料，或补一条简短的 `--why` 提示，再重新提问。"
 
 
 def _status_counts(contexts) -> dict[str, int]:
@@ -239,11 +246,11 @@ def _format_status_counts(counts: dict[str, int]) -> str:
 
 
 def _direct_answer(primary, next_action: str) -> str:
-    project = primary.related_project or "an unresolved project or question"
+    project = primary.related_project or "一个尚未完全明确的项目或问题"
     return (
-        f"You likely saved `{primary.title}` because it connected to {project}. "
-        f"The preserved reason is: {primary.why_saved} "
-        f"The most concrete next step recovered from the wiki is: {next_action}"
+        f"你当时很可能保存了 `{primary.title}`，因为它和 {project} 有关。"
+        f"当前保留下来的理由是：{primary.why_saved}。"
+        f"从知识库里恢复出的最具体下一步是：{next_action}"
     )
 
 
@@ -251,14 +258,14 @@ def render_retrieval_diagnostics(retrieval: RetrievalResult) -> str:
     diagnostics = retrieval.diagnostics
     return "\n".join(
         [
-            f"- keyword hits: {diagnostics.keyword_hits}",
-            f"- graph node hits: {diagnostics.graph_node_hits}",
-            f"- expanded nodes: {diagnostics.expanded_nodes}",
-            f"- source pages used: {diagnostics.source_pages_used}",
-            f"- user-stated contexts: {diagnostics.user_stated_contexts}",
-            f"- AI-inferred contexts: {diagnostics.ai_inferred_contexts}",
-            f"- graph expansion truncated: {diagnostics.graph_expansion_truncated}",
-            "- top candidate reasons:",
+            f"- 关键词命中：{diagnostics.keyword_hits}",
+            f"- 图节点命中：{diagnostics.graph_node_hits}",
+            f"- 扩展节点数：{diagnostics.expanded_nodes}",
+            f"- 使用的材料页：{diagnostics.source_pages_used}",
+            f"- 用户引导上下文：{diagnostics.user_stated_contexts}",
+            f"- AI 推断上下文：{diagnostics.ai_inferred_contexts}",
+            f"- 图扩展是否截断：{diagnostics.graph_expansion_truncated}",
+            "- 候选理由：",
             *[f"  - {reason}" for reason in diagnostics.top_candidate_reasons],
         ]
     )

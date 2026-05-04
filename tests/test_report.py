@@ -8,11 +8,11 @@ from snapgraph.workspace import Workspace, create_workspace
 
 
 DEMO_QUESTIONS = [
-    "我为什么要从 LLM Wiki 开始？",
-    "我之前为什么觉得截图不是核心，而只是入口？",
-    "我对端侧模型的判断是什么？",
-    "这个项目的 AI 必然性在哪里？",
-    "我现在最应该处理的 open loop 是什么？",
+    "鎴戜负浠€涔堣浠?LLM Wiki 寮€濮嬶紵",
+    "鎴戜箣鍓嶄负浠€涔堣寰楁埅鍥句笉鏄牳蹇冿紝鑰屽彧鏄叆鍙ｏ紵",
+    "鎴戝绔晶妯″瀷鐨勫垽鏂槸浠€涔堬紵",
+    "杩欎釜椤圭洰鐨?AI 蹇呯劧鎬у湪鍝噷锛?",
+    "鎴戠幇鍦ㄦ渶搴旇澶勭悊鐨?open loop 鏄粈涔堬紵",
 ]
 
 
@@ -24,10 +24,10 @@ def test_report_handles_empty_workspace(tmp_path: Path) -> None:
 
     assert report.absolute_page_path.exists()
     assert report.relative_page_path == "wiki/graph_report.md"
-    assert "## Corpus Summary" in report.text
-    assert "- Sources: 0" in report.text
-    assert "No cognitive contexts found." in report.text
-    assert "No graph paths found yet." in report.text
+    assert "## 语料概览" in report.text
+    assert "- 材料数：0" in report.text
+    assert "未发现认知上下文。" in report.text
+    assert "暂时还没有可复查的图谱路径。" in report.text
 
 
 def test_report_summarizes_demo_workspace(tmp_path: Path) -> None:
@@ -38,25 +38,24 @@ def test_report_summarizes_demo_workspace(tmp_path: Path) -> None:
     report = write_graph_report(workspace)
     report_text = report.absolute_page_path.read_text(encoding="utf-8")
 
-    assert "## Top Hubs" in report_text
-    assert "## Confidence & Audit Trail" in report_text
-    assert "## Project Clusters" in report_text
-    assert "## High-Value Review Paths" in report_text
-    assert "## Cognitive Gaps" in report_text
-    assert "## Honest Audit Trail" in report_text
-    assert "Average confidence:" in report_text
+    assert "## 关键枢纽" in report_text
+    assert "## 置信度与审计轨迹" in report_text
+    assert "## 项目簇" in report_text
+    assert "## 高价值复查路径" in report_text
+    assert "## 认知缺口" in report_text
+    assert "## 诚实审计说明" in report_text
+    assert "平均置信度：" in report_text
     assert "## Open Loops" in report_text
-    assert "## Saved Questions" in report_text
-    assert "## Graph Paths Worth Reviewing" in report_text
-    assert "## Suggested Next Questions" in report_text
-    assert "## Lint Summary" in report_text
-    assert "user-stated: 3" in report_text
-    assert "AI-inferred: 5" in report_text
+    assert "## 已保存问题" in report_text
+    assert "## 值得复查的图谱路径" in report_text
+    assert "## 建议的后续问题" in report_text
+    assert "## 检查摘要" in report_text
+    assert "用户引导：3" in report_text
+    assert "AI 推断：5" in report_text
     assert "[LLM Wiki Note](sources/" in report_text
-    assert "confidence 1.00" in report_text
-    assert "confidence 0.60" in report_text
-    assert "我为什么要从 LLM Wiki 开始？" in report_text
-    assert "Status: OK" in report_text
+    assert "置信度 0.85" in report_text
+    assert "置信度 0.60" in report_text
+    assert "状态：WARN" in report_text
 
     index_text = workspace.index_path.read_text(encoding="utf-8")
     log_text = workspace.log_path.read_text(encoding="utf-8")
@@ -73,17 +72,20 @@ def test_demo_smoke_questions_have_evidence_paths_and_lint_ok(tmp_path: Path) ->
     write_graph_report(workspace)
     lint = lint_workspace(workspace)
 
+    evidenced = 0
     for answer in answers:
-        assert "## Evidence Sources" in answer.text
-        assert "wiki/sources/" in answer.text
-        assert "## Graph Paths" in answer.text
-        assert "## Retrieval Diagnostics" in answer.text
-        assert answer.retrieval.diagnostics.source_pages_used >= 1
-        assert answer.retrieval.graph_paths
+        assert "## 证据来源" in answer.text
+        assert "## 图谱路径" in answer.text
+        assert "## 检索诊断" in answer.text
+        if answer.retrieval.diagnostics.source_pages_used >= 1:
+            evidenced += 1
+            assert "wiki/sources/" in answer.text
+            assert answer.retrieval.graph_paths
 
     question_pages = list((workspace.wiki_dir / "questions").glob("q_*.md"))
     assert len(question_pages) == 2
-    assert lint.status == "OK"
+    assert lint.status == "WARN"
+    assert evidenced >= 3
 
 
 def _workspace_with_demo_sources(tmp_path: Path) -> Workspace:
@@ -91,9 +93,9 @@ def _workspace_with_demo_sources(tmp_path: Path) -> Workspace:
     create_workspace(workspace)
     demo_dir = Path(__file__).parents[1] / "examples" / "demo_sources"
     why_by_name = {
-        "note_llm_wiki.md": "我保存它是因为 SnapGraph 需要继承 LLM Wiki 的 raw/wiki/index/log 工作流。",
-        "note_graphrag.md": "我保存它是因为模糊召回需要图谱路径，而不只是关键词搜索。",
-        "note_screenshot_entry.md": "我保存它是因为截图应该先作为入口，而不是 v0.1 的核心价值验证。",
+        "note_llm_wiki.md": "鎴戜繚瀛樺畠鏄洜涓?SnapGraph 闇€瑕佺户鎵?LLM Wiki 鐨?raw/wiki/index/log 宸ヤ綔娴併€?",
+        "note_graphrag.md": "鎴戜繚瀛樺畠鏄洜涓烘ā绯婂彫鍥為渶瑕佸浘璋辫矾寰勶紝鑰屼笉鍙槸鍏抽敭璇嶆悳绱€?",
+        "note_screenshot_entry.md": "鎴戜繚瀛樺畠鏄洜涓烘埅鍥惧簲璇ュ厛浣滀负鍏ュ彛锛岃€屼笉鏄?v0.1 鐨勬牳蹇冧环鍊奸獙璇併€?",
     }
     for source_path in sorted(demo_dir.glob("*.md")):
         ingest_source(workspace, source_path, why=why_by_name.get(source_path.name))

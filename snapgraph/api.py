@@ -21,7 +21,7 @@ from .config import (
 from .demo_data import load_demo_dataset, DEMO_QUESTIONS
 from .focus import focus_graph_for_payload, focus_graph_from_retrieval
 from .graph_store import graph_diagnostics, graph_for_space, graph_insights, load_graph
-from .ingest import ingest_source
+from .ingest import ingest_source, update_cognitive_context
 from .linting import lint_workspace
 from .llm import MockLLM
 from .llm_providers import provider_metadata, resolve_llm_with_metadata
@@ -265,6 +265,26 @@ def api_source_detail(source_id: str):
         "markdown": page_path.read_text(encoding="utf-8"),
         "detail": detail or {},
     }
+
+
+@app.patch("/api/sources/{source_id}/context")
+def api_source_context_update(source_id: str, payload: dict):
+    try:
+        update_cognitive_context(
+            _workspace(),
+            source_id,
+            why_saved=payload.get("why_saved"),
+            related_project=payload.get("related_project"),
+            open_loops=payload.get("open_loops"),
+            future_recall_questions=payload.get("future_recall_questions"),
+            confirm=bool(payload.get("confirm")),
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
+    return {"detail": detail or {}}
 
 
 @app.post("/api/ingest")

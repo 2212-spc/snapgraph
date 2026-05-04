@@ -33,20 +33,20 @@ class MockLLM(LLMProvider):
     def summarize(self, text: str) -> str:
         lines = _meaningful_lines(text)
         if not lines:
-            return "Empty source."
+            return "空内容。"
         first = lines[0]
         return first[:220]
 
     def key_details(self, text: str) -> list[str]:
         lines = _meaningful_lines(text)
         details = lines[:3]
-        return details or ["No key details found."]
+        return details or ["未提取到关键细节。"]
 
     def infer_why_saved(self, title: str, text: str) -> str:
         summary = self.summarize(text)
         return (
-            "AI-inferred: this source may have been saved because it could help "
-            f"revisit '{title}' later. Evidence hint: {summary}"
+            "AI-inferred: 这份材料可能被保存下来，是因为它有助于之后重新理解"
+            f"“{title}”。证据提示：{summary}"
         )
 
     def open_loops(self, text: str) -> list[str]:
@@ -59,12 +59,12 @@ class MockLLM(LLMProvider):
             return loops[:3]
 
         summary = self.summarize(text)
-        return [f"Decide how to use this source later: {summary[:120]}"]
+        return [f"之后再决定如何使用这份材料：{summary[:120]}"]
 
     def future_recall_questions(self, title: str, text: str) -> list[str]:
         return [
-            f"Why did '{title}' matter when it was saved?",
-            f"How does '{title}' connect to my current project or question?",
+            f"保存“{title}”时，它为什么重要？",
+            f"“{title}”和我当前的项目或问题有什么关系？",
         ]
 
     def related_project(self, text: str) -> str | None:
@@ -85,8 +85,8 @@ class MockLLM(LLMProvider):
 
     def describe_image(self, image_path: Path) -> str:
         return (
-            f"[Image at {image_path.name}: visual content not available "
-            "with MockLLM. Use a vision-enabled LLM provider.]"
+            f"[图片 {image_path.name}：MockLLM 无法读取视觉内容。"
+            "请使用支持视觉能力的 LLM provider。]"
         )
 
     def synthesize_answer(
@@ -114,43 +114,43 @@ class MockLLM(LLMProvider):
         evidence_lines = [
             f"{i}. `{context.get('title', '')}` - {context.get('source_page', '')} "
             f"(`{context.get('source_id', '')}`, {context.get('why_saved_status', '')}, "
-            f"{context.get('space_name', 'Default')})"
+            f"{context.get('space_name', '默认空间')})"
             for i, context in enumerate(contexts, start=1)
         ]
-        graph_path_lines = graph_paths or ["No graph path found."]
-        project = primary.get("related_project") or "an unresolved project or question"
+        graph_path_lines = graph_paths or ["未找到图路径。"]
+        project = primary.get("related_project") or "一个尚未完全明确的项目或问题"
         next_action = (
             open_loops[0]
             if open_loops
-            else f"Review {primary.get('source_page', '')} and decide whether its saved reason still matters."
+            else f"回看 {primary.get('source_page', '')}，确认这条保存理由现在是否仍然成立。"
         )
         return "\n".join(
             [
-                "# Answer",
-                "## Direct Answer",
+                "# 回答",
+                "## 直接回答",
                 (
-                    f"You likely saved `{primary.get('title', '')}` because it connected to {project}. "
-                    f"The preserved reason is: {primary.get('why_saved', '')} "
-                    f"The most concrete next step recovered from the wiki is: {next_action}"
+                    f"你当时很可能保存了 `{primary.get('title', '')}`，因为它和 {project} 有关。"
+                    f"当前保留下来的理由是：{primary.get('why_saved', '')}。"
+                    f"从知识库里恢复出的最具体下一步是：{next_action}"
                 ),
                 "",
-                "## Recovered Cognitive Context",
-                f"Status mix: {status_summary}.",
+                "## 恢复出的认知上下文",
+                f"状态分布：{status_summary}。",
                 *[
-                    f"- `{context.get('title', '')}`: {context.get('why_saved', '')} "
+                    f"- `{context.get('title', '')}`：{context.get('why_saved', '')} "
                     f"({context.get('why_saved_status', '')})"
                     for context in contexts
                 ],
                 "",
-                "## Evidence Sources",
+                "## 证据来源",
                 *evidence_lines,
                 "",
-                "## Graph Paths",
+                "## 图谱路径",
                 "```text",
                 *graph_path_lines,
                 "```",
                 "",
-                "## Suggested Next Action",
+                "## 建议的下一步",
                 next_action,
             ]
         )
@@ -159,21 +159,21 @@ class MockLLM(LLMProvider):
 def _template_no_answer() -> str:
     return "\n".join(
         [
-            "# Answer",
-            "## Direct Answer",
-            "Low confidence: I could not find matching wiki pages or graph paths. "
-            "I will not infer a reason without evidence.",
+            "# 回答",
+            "## 直接回答",
+            "低置信度：我没有找到匹配的 wiki 页面或图谱路径。"
+            "在缺少证据时，我不会推断保存原因。",
             "",
-            "## Evidence Sources",
-            "None.",
+            "## 证据来源",
+            "无。",
             "",
-            "## Graph Paths",
+            "## 图谱路径",
             "```text",
-            "None.",
+            "无。",
             "```",
             "",
-            "## Suggested Next Action",
-            "Ingest a relevant source or add a user-stated `--why` note before asking again.",
+            "## 建议的下一步",
+            "先导入相关材料，或补一条简短的 `--why` 提示，再重新提问。",
         ]
     )
 

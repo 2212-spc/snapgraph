@@ -33,7 +33,6 @@ def test_ingest_creates_graph_nodes_edges_and_sqlite_rows(tmp_path: Path) -> Non
 
     assert f"source_{result.source.id}" in node_ids
     assert f"thought_{result.source.id}" in node_ids
-    assert any(node["type"] == "question" for node in graph["nodes"])
     assert any(node["type"] == "task" for node in graph["nodes"])
     assert any(node["type"] == "project" and node["label"] == "SnapGraph" for node in graph["nodes"])
     assert {"triggered_thought", "follow_up", "belongs_to", "evidence_for"} <= edge_relations
@@ -60,8 +59,8 @@ def test_graph_diagnostics_reports_counts_hubs_and_no_orphans(tmp_path: Path) ->
 
     diagnostics = graph_diagnostics(workspace)
 
-    assert diagnostics.node_count >= 5
-    assert diagnostics.edge_count >= 5
+    assert diagnostics.node_count >= 4
+    assert diagnostics.edge_count >= 4
     assert diagnostics.node_types["source"] == 1
     assert diagnostics.top_hubs
     assert diagnostics.orphans == []

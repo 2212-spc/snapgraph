@@ -394,5 +394,6 @@ This workspace follows the LLM Wiki pattern:
 - index.md is the content map
 - log.md is an append-only operation timeline
 - AI-inferred cognitive context must be labeled as AI-inferred
-- user-stated cognitive context must be preserved exactly
+- user-guided hints are not the same as user-stated memory
+- user-stated cognitive context must be preserved exactly once confirmed
 """
