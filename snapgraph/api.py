@@ -20,7 +20,19 @@ from .config import (
 )
 from .demo_data import load_demo_dataset, DEMO_QUESTIONS
 from .focus import focus_graph_for_payload, focus_graph_from_retrieval
-from .graph_store import graph_diagnostics, graph_for_space, graph_insights, load_graph
+from .graph_store import (
+    create_graph_theme,
+    create_manual_edge,
+    create_user_thought,
+    graph_diagnostics,
+    graph_for_space,
+    graph_insights,
+    list_graph_themes,
+    load_graph_layout,
+    save_graph_layout,
+    update_graph_edge,
+    update_graph_theme,
+)
 from .ingest import ingest_source
 from .linting import lint_workspace
 from .llm import MockLLM
@@ -319,6 +331,110 @@ def api_ingest(
 @app.get("/api/graph")
 def api_graph(space_id: str = DEFAULT_GRAPH_SPACE_ID):
     return _graph_payload(_workspace(), space_id)
+
+
+@app.get("/api/graph/layout")
+def api_graph_layout(view_id: str):
+    return load_graph_layout(_workspace(), view_id)
+
+
+@app.patch("/api/graph/layout")
+def api_graph_layout_save(payload: dict):
+    view_id = str(payload.get("view_id", "")).strip()
+    if not view_id:
+        raise HTTPException(400, "view_id is required")
+    try:
+        return save_graph_layout(
+            _workspace(),
+            view_id=view_id,
+            graph_space_id=str(payload.get("graph_space_id") or DEFAULT_GRAPH_SPACE_ID),
+            positions=list(payload.get("positions") or []),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/graph/edges")
+def api_graph_edge_create(payload: dict):
+    try:
+        edge = create_manual_edge(
+            _workspace(),
+            source=str(payload.get("source", "")),
+            target=str(payload.get("target", "")),
+            relation=str(payload.get("relation") or "related_to"),
+            reason=str(payload.get("reason", "")),
+            graph_space_id=str(payload.get("graph_space_id") or DEFAULT_GRAPH_SPACE_ID),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {"edge": edge}
+
+
+@app.patch("/api/graph/edges/{edge_id}")
+def api_graph_edge_update(edge_id: str, payload: dict):
+    try:
+        edge = update_graph_edge(
+            _workspace(),
+            edge_id,
+            status=str(payload.get("status", "")),
+            reason=str(payload.get("reason", "")),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, "Edge not found") from exc
+    return {"edge": edge}
+
+
+@app.post("/api/graph/thoughts")
+def api_graph_thought_create(payload: dict):
+    try:
+        return create_user_thought(
+            _workspace(),
+            graph_space_id=str(payload.get("graph_space_id") or DEFAULT_GRAPH_SPACE_ID),
+            node_ids=[str(node_id) for node_id in payload.get("node_ids", [])],
+            label=str(payload.get("label", "")),
+            reason=str(payload.get("reason", "")),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/graph/themes")
+def api_graph_themes(space_id: str | None = None):
+    return {"themes": list_graph_themes(_workspace(), space_id)}
+
+
+@app.post("/api/graph/themes")
+def api_graph_theme_create(payload: dict):
+    try:
+        return create_graph_theme(
+            _workspace(),
+            graph_space_id=str(payload.get("graph_space_id") or DEFAULT_GRAPH_SPACE_ID),
+            label=str(payload.get("label", "")),
+            member_node_ids=[str(node_id) for node_id in payload.get("member_node_ids", [])],
+            reason=str(payload.get("reason", "")),
+            description=str(payload.get("description", "")),
+            origin=str(payload.get("origin") or "user"),
+            status=str(payload.get("status") or "confirmed"),
+            confidence=float(payload.get("confidence", 1.0)),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.patch("/api/graph/themes/{theme_id}")
+def api_graph_theme_update(theme_id: str, payload: dict):
+    try:
+        return update_graph_theme(_workspace(), theme_id, payload)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, "Theme not found") from exc
 
 
 # ── Focus graph ──
