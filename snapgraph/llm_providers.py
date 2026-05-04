@@ -39,6 +39,9 @@ def _resolve_llm(workspace) -> LLMProvider:
     if provider_name == "deepseek":
         return _create_deepseek(config.llm)
 
+    if provider_name == "qwen":
+        return _create_qwen(config.llm)
+
     return MockLLM()
 
 
@@ -101,6 +104,8 @@ def _configured_provider(workspace) -> str:
 def _default_model_for_provider(provider: str) -> str:
     if provider == "deepseek":
         return DeepSeekProvider.DEFAULT_MODEL
+    if provider == "qwen":
+        return QwenProvider.DEFAULT_MODEL
     if provider == "anthropic":
         return AnthropicProvider.DEFAULT_MODEL
     return "mock"
@@ -128,6 +133,19 @@ def _create_deepseek(llm_config) -> LLMProvider:
         )
     return DeepSeekProvider(
         model=llm_config.model or DeepSeekProvider.DEFAULT_MODEL,
+        api_key=api_key,
+    )
+
+
+def _create_qwen(llm_config) -> LLMProvider:
+    api_key = os.environ.get(llm_config.api_key_env or "SNAPGRAPH_LLM_API_KEY", "")
+    if not api_key:
+        raise RuntimeError(
+            f"Qwen provider requires API key. "
+            f"Set environment variable {llm_config.api_key_env or 'SNAPGRAPH_LLM_API_KEY'}."
+        )
+    return QwenProvider(
+        model=llm_config.model or QwenProvider.DEFAULT_MODEL,
         api_key=api_key,
     )
 
@@ -501,6 +519,26 @@ class DeepSeekProvider:
         )
 
 
+class QwenProvider(DeepSeekProvider):
+    provider_name = "qwen"
+    DEFAULT_MODEL = "qwen3-vl-plus"
+    DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    @property
+    def client(self):
+        if self._client is None:
+            from openai import OpenAI
+            import httpx
+
+            http_client = httpx.Client(proxy=None)
+            self._client = OpenAI(
+                api_key=self.api_key,
+                base_url=os.environ.get("SNAPGRAPH_QWEN_BASE_URL", self.DEFAULT_BASE_URL),
+                http_client=http_client,
+            )
+        return self._client
+
+
 _SUMMARIZE_SYSTEM = (
     "你在为一个个人认知知识库总结文档。"
     "请保持简洁、客观，不要编造细节。"
@@ -509,19 +547,19 @@ _SUMMARIZE_SYSTEM = (
 _SYNTHESIZE_SYSTEM = """你在为一个名为 SnapGraph 的认知知识库回答问题。
 你的回答必须使用中文，并严格遵循下面结构：
 
-## 直接回答
-基于检索证据，对问题给出直接回答。
+## 找回的原话
+优先列出 user-stated 原话；没有用户原话时，明确说明只能看到 AI-inferred 线索。
 
-## 恢复出的认知上下文
-对每个材料说明：它是什么、为什么会被保存，以及这个理由属于 user-stated 还是 AI-inferred。必须清楚区分这两者。
+## 相关材料
+列出直接相关材料，并标明 user-stated / AI-inferred。
 
-## 证据来源
-编号列出证据材料，并标明其状态（user-stated / AI-inferred）。
-
-## 图谱路径
+## 连接路径
 说明这些材料在知识图谱中如何连接；如果没有路径，也要明确写出来。
 
-## 建议的下一步
+## 涌现洞见
+只基于检索证据说明这些材料串起来之后，当前最值得注意的新判断是什么。
+
+## 下一步
 从检索出的上下文中给出最可执行的 open loop 或下一步行动。
 
 规则：
@@ -529,7 +567,9 @@ _SYNTHESIZE_SYSTEM = """你在为一个名为 SnapGraph 的认知知识库回答
 - 如果所有上下文都是低置信度的 AI-inferred，要明确说明。
 - 不要假装确定知道用户当时的意图或记忆。
 - 要引用具体材料作为证据。
-- 如果置信度低，仍可提供已有信息，但必须明确标出不确定性。"""
+- 如果置信度低，仍可提供已有信息，但必须明确标出不确定性。
+- 不要使用 emoji、横线分隔符或“这是个好问题”一类寒暄。
+- 优先恢复当时留下的原话，再解释它和当前问题的关系。"""
 
 
 def _format_contexts_for_prompt(contexts: list[dict]) -> str:

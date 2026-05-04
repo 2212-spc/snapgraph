@@ -50,12 +50,12 @@ def test_report_summarizes_demo_workspace(tmp_path: Path) -> None:
     assert "## 值得复查的图谱路径" in report_text
     assert "## 建议的后续问题" in report_text
     assert "## 检查摘要" in report_text
-    assert "用户引导：3" in report_text
+    assert "用户确认：3" in report_text
     assert "AI 推断：5" in report_text
     assert "[LLM Wiki Note](sources/" in report_text
-    assert "置信度 0.85" in report_text
+    assert "置信度 1.00" in report_text
     assert "置信度 0.60" in report_text
-    assert "状态：WARN" in report_text
+    assert "状态：OK" in report_text
 
     index_text = workspace.index_path.read_text(encoding="utf-8")
     log_text = workspace.log_path.read_text(encoding="utf-8")
@@ -74,8 +74,11 @@ def test_demo_smoke_questions_have_evidence_paths_and_lint_ok(tmp_path: Path) ->
 
     evidenced = 0
     for answer in answers:
-        assert "## 证据来源" in answer.text
-        assert "## 图谱路径" in answer.text
+        assert "## 找回的原话" in answer.text
+        assert "## 相关材料" in answer.text
+        assert "## 连接路径" in answer.text
+        assert "## 涌现洞见" in answer.text
+        assert "## 下一步" in answer.text
         assert "## 检索诊断" in answer.text
         if answer.retrieval.diagnostics.source_pages_used >= 1:
             evidenced += 1
@@ -84,7 +87,7 @@ def test_demo_smoke_questions_have_evidence_paths_and_lint_ok(tmp_path: Path) ->
 
     question_pages = list((workspace.wiki_dir / "questions").glob("q_*.md"))
     assert len(question_pages) == 2
-    assert lint.status == "WARN"
+    assert lint.status == "OK"
     assert evidenced >= 3
 
 

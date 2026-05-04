@@ -254,7 +254,7 @@ def _project_cluster_lines(insights: dict) -> list[str]:
     for cluster in clusters[:8]:
         lines.append(
             f"{cluster['project']}：{cluster['source_count']} 份材料，"
-            f"{cluster['user_stated']} 份用户引导，{cluster['ai_inferred']} 份 AI 推断，"
+            f"{cluster['user_stated']} 份用户确认，{cluster['ai_inferred']} 份 AI 推断，"
             f"平均置信度 {cluster['average_confidence']:.2f}"
         )
     return lines

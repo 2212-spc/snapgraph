@@ -22,7 +22,7 @@ def test_focus_graph_for_question_is_local_and_prioritizes_user_guided(tmp_path:
     assert 0 < len(focus["nodes"]) <= 18
     assert len(focus["edges"]) < 65
     assert focus["evidence_cards"]
-    assert focus["evidence_cards"][0]["why_saved_status"] == "user-guided"
+    assert focus["evidence_cards"][0]["why_saved_status"] == "user-stated"
     assert focus["confidence_summary"]["user_stated"] >= 1
     assert focus["open_loops"]
 

@@ -141,14 +141,7 @@ def _empty_focus_graph(center: dict, space_id: str) -> dict:
 
 
 def _rank_contexts(contexts: list[RetrievedContext]) -> list[RetrievedContext]:
-    return sorted(
-        contexts,
-        key=lambda context: (
-            not is_user_guided_status(context.why_saved_status),
-            not any(loop and loop != "None" for loop in context.open_loops),
-            context.title,
-        ),
-    )
+    return contexts
 
 
 def _rank_edges(edges: list[dict]) -> list[dict]:

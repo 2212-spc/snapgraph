@@ -172,10 +172,10 @@ def _build_cognitive_context(
     hint = (why or "").strip()
     effective_text = text
     if hint:
-        effective_text = f"{text}\n\nUser hint: {hint}".strip()
-        why_saved = llm.infer_why_saved(source.title, effective_text)
-        status = "user-guided"
-        confidence = 0.85
+        effective_text = f"{text}\n\nUser-stated saved reason: {hint}".strip()
+        why_saved = hint
+        status = "user-stated"
+        confidence = 1.0
     else:
         why_saved = llm.infer_why_saved(source.title, effective_text)
         status = "AI-inferred"
@@ -320,6 +320,12 @@ def update_cognitive_context(
         raise ValueError("why_saved cannot be empty")
     _save_cognitive_context(workspace, next_context)
     replace_source_graph(workspace, source, next_context)
+    duplicate_source_ids = [
+        duplicate_id
+        for duplicate_id in _duplicate_source_ids(workspace, source.content_hash)
+        if duplicate_id != source.id
+    ]
+    upsert_duplicate_edges(workspace, source, duplicate_source_ids)
     page = write_source_page(
         workspace,
         source,

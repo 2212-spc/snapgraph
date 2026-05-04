@@ -21,6 +21,27 @@ from .workspace import Workspace
 MIN_RETRIEVAL_SCORE = 0.001
 QUERY_STOPWORDS = {
     "我",
+    "刚才",
+    "之前",
+    "当时",
+    "那份",
+    "这份",
+    "那张",
+    "这个",
+    "那个",
+    "找回",
+    "寻找",
+    "记得",
+    "觉得",
+    "真正",
+    "容易",
+    "关系",
+    "是什",
+    "有什",
+    "么关",
+    "的是",
+    "请",
+    "不要",
     "什么",
     "为什么",
     "这个",
@@ -80,6 +101,7 @@ def retrieve_for_question(
         source_scores,
         retrieval_config.max_source_pages,
         space_id=space_id,
+        terms=terms,
     )
     graph_paths = _graph_paths(graph, node_by_id, matched_node_ids, expanded_node_ids)
     diagnostics = RetrievalDiagnostics(
@@ -262,6 +284,7 @@ def _load_contexts(
     max_source_pages: int,
     *,
     space_id: str | None = None,
+    terms: list[str] | None = None,
 ) -> list[RetrievedContext]:
     if not source_scores:
         return []
@@ -271,6 +294,8 @@ def _load_contexts(
         SELECT
             s.id,
             s.title,
+            s.type,
+            s.imported_at,
             c.why_saved,
             c.why_saved_status,
             c.related_project,
@@ -296,6 +321,8 @@ def _load_contexts(
         (
             source_id,
             title,
+            source_type,
+            imported_at,
             why_saved,
             why_saved_status,
             related_project,
@@ -312,8 +339,7 @@ def _load_contexts(
             or (relative_page not in index_text and index_page not in index_text)
         ):
             continue
-        contexts.append(
-            RetrievedContext(
+        context = RetrievedContext(
                 source_id=source_id,
                 source_page=relative_page,
                 title=title,
@@ -326,11 +352,59 @@ def _load_contexts(
                 space_name=space_name or "Default",
                 source_excerpt=_source_excerpt(page_path),
             )
-        )
-    return sorted(
+        contexts.append((context, source_type or "", imported_at or ""))
+    terms = terms or []
+    ranked = sorted(
         contexts,
-        key=lambda context: (-source_scores.get(context.source_id, 0), context.title),
-    )[:max_source_pages]
+        key=lambda item: (
+            -_ranking_score(item[0], source_scores.get(item[0].source_id, 0), item[1], item[2], terms),
+            -_imported_at_number(item[2]),
+            item[0].title,
+        )
+    )
+    return [context for context, _source_type, _imported_at in ranked[:max_source_pages]]
+
+
+def _ranking_score(
+    context: RetrievedContext,
+    base_score: float,
+    source_type: str,
+    imported_at: str,
+    terms: list[str],
+) -> float:
+    score = min(base_score, 1.6)
+    searchable = " ".join(
+        [
+            context.title,
+            context.why_saved,
+            context.related_project or "",
+            context.source_excerpt,
+            " ".join(context.open_loops),
+            " ".join(context.future_recall_questions),
+        ]
+    ).lower()
+    if is_user_guided_status(context.why_saved_status):
+        score += 0.9
+    elif is_ai_inferred_status(context.why_saved_status):
+        score -= 0.45
+    if source_type and source_type.lower() in terms:
+        score += 1.0
+    if source_type == "pdf" and "pdf" in terms:
+        score += 1.0
+    if source_type == "pdf" and (
+        "不会解析 pdf 正文" in searchable
+        or "没有从这份 pdf 中提取到可用正文" in searchable
+    ):
+        score -= 0.9
+    if any(term and term in context.title.lower() for term in terms):
+        score += 0.75
+    score += min(0.45, 0.04 * sum(searchable.count(term) for term in terms if term))
+    return score
+
+
+def _imported_at_number(imported_at: str) -> int:
+    digits = re.sub(r"\D", "", imported_at)[:14]
+    return int(digits or "0")
 
 
 def _graph_paths(

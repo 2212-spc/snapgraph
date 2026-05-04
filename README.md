@@ -1,8 +1,8 @@
 # SnapGraph
 
-A local cognitive memory wiki that remembers why you saved something.
+A local capture-to-connection space that preserves why something mattered when you saved it.
 
-SnapGraph turns notes, text files, and experimental screenshots into an auditable Markdown wiki plus a lightweight graph. It is designed for fuzzy recall: not just "find this document", but "recover the judgment I had when I saved it."
+SnapGraph turns links, notes, text files, and screenshots into an auditable Markdown wiki plus a lightweight cognitive graph. Its core action is simple: drop a material in, leave one or two sentences of context, and let SnapGraph connect that capture to related materials, open loops, and projects over time.
 
 ## 60 Second Demo
 
@@ -14,18 +14,18 @@ conda run -n snapgraph-dev snapgraph load-demo
 conda run -n snapgraph-dev snapgraph demo
 ```
 
-Open `http://localhost:8501`, then ask:
+Open `http://localhost:8501`, then try the capture table:
 
 ```text
-我为什么要从 LLM Wiki 开始？
-我之前为什么觉得截图不是核心，而只是入口？
-我现在最应该处理的 open loop 是什么？
+丢进一段摘录、链接或文件。
+补一句：为什么这条值得记下？
+看右侧是否浮出旧线索，以及它接到了哪个未闭环问题。
 ```
 
 The demo flow is:
 
 ```text
-Capture material -> Recall a judgment -> Inspect evidence paths -> Write back to wiki -> Review open loops
+Drop material -> Add context -> See related old clues -> Attach to a live problem -> Review open loops
 ```
 
 ## What It Builds
@@ -48,7 +48,7 @@ Capture material -> Recall a judgment -> Inspect evidence paths -> Write back to
 ## Trust Model
 
 - Raw sources are copied and hash-checked.
-- User-stated reasons from `--why` are preserved exactly.
+- User-stated reasons from `--why` or the web context note are preserved exactly.
 - AI-inferred reasons are visibly labeled as `AI-inferred`.
 - Answers include evidence sources, graph paths, and retrieval diagnostics.
 - Missing evidence returns low confidence instead of invented memory.
@@ -70,17 +70,16 @@ snapgraph eval --output-dir /tmp/snapgraph_eval
 
 ## Real LLM Mode
 
-MockLLM is deterministic and best for tests. DeepSeek is the default manual quality-evaluation provider.
+MockLLM is deterministic and best for tests. Qwen can be used for multimodal manual evaluation.
 
 ```bash
 export SNAPGRAPH_LLM_API_KEY="..."
-snapgraph config set-llm-provider deepseek
-snapgraph config set-llm-model deepseek-v4-flash
+snapgraph config set-llm-provider qwen
+snapgraph config set-llm-model qwen3-vl-plus
 snapgraph ask "这些材料共同支持 SnapGraph 的哪条产品判断？"
 ```
 
-Supported DeepSeek API model names currently include `deepseek-v4-flash` and `deepseek-v4-pro`.
-The older `deepseek-v4` identifier is rejected by the API.
+Qwen uses the DashScope OpenAI-compatible endpoint by default. Override it with `SNAPGRAPH_QWEN_BASE_URL` when using a regional endpoint.
 
 Do not put real keys in `config.yaml`, `.env`, wiki pages, evaluation reports, or issue logs.
 
@@ -95,7 +94,7 @@ inputs/
 workspace/.my_snapgraph/
 ```
 
-It covers Markdown, text, mixed Chinese/English, duplicate files, empty files, long files, screenshot placeholders, unsupported PDFs, abstract questions, open-loop recovery, cross-document synthesis, and no-match questions.
+It covers Markdown, text, webpage exports, PDF capture with local text extraction when available, mixed Chinese/English, duplicate files, empty files, long files, screenshot placeholders, abstract questions, open-loop recovery, cross-document synthesis, and no-match questions.
 
 Scores are 20 points:
 
@@ -118,15 +117,17 @@ snapgraph demo
 The app is organized around:
 
 ```text
-Recall / Capture / Memory / Paths / Report / Settings
+Capture table / Context note / Memory stream / Problem view / Settings
 ```
 
 Current product semantics are:
 
-- `Capture`: save a source plus an optional short hint about why it may matter.
-- `Recall`: recover evidence paths and saved reasoning, not generic chat answers.
-- `Graph`: center the main graph on `source / thought / related project / open loop`.
-- `Report`: surface low-confidence AI-inferred context so it can be confirmed or corrected.
+- `Capture table`: receive a link, text, webpage export, PDF, screenshot, file, or loose thought without asking the user to choose a space first.
+- `Context note`: preserve the user's own reason as `user-stated`; AI may summarize sources, but it must not invent the user's motive.
+- `Recall`: when the main text sounds like "我之前为什么..." or another fuzzy clue, recover old contexts without saving that question as a new source.
+- `Memory stream`: surface related old clues, prior judgments, source excerpts, and open loops beside the current capture.
+- `Problem view`: group captures around live questions/open loops instead of making the homepage a graph canvas.
+- `Settings`: keep provider/runtime details out of the first-run experience.
 
 ## Tests
 
@@ -137,7 +138,7 @@ conda run -n snapgraph-dev pytest -q
 Current expected baseline:
 
 ```text
-70 tests passing
+71 tests passing
 ```
 
 FastAPI may emit `on_event` deprecation warnings; they do not affect current behavior.

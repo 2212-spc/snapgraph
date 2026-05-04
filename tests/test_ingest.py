@@ -1,7 +1,9 @@
 import json
 import sqlite3
+from types import SimpleNamespace
 from pathlib import Path
 
+import snapgraph.parsers as parsers
 from snapgraph.ingest import ingest_source, update_cognitive_context
 from snapgraph.workspace import Workspace, create_workspace
 
@@ -40,7 +42,7 @@ def test_ingest_markdown_creates_raw_page_index_and_log(tmp_path: Path) -> None:
     assert result.page.relative_page_path in log_text
 
 
-def test_ingest_uses_user_hint_to_guide_inference(tmp_path: Path) -> None:
+def test_ingest_preserves_user_stated_why_exactly(tmp_path: Path) -> None:
     source_path = tmp_path / "note.md"
     source_path.write_text("# Test Note\n\nSnapGraph source.\n", encoding="utf-8")
     workspace = Workspace(tmp_path)
@@ -49,13 +51,13 @@ def test_ingest_uses_user_hint_to_guide_inference(tmp_path: Path) -> None:
 
     result = ingest_source(workspace, source_path, why=why)
 
-    assert result.cognitive_context.why_saved != why
-    assert result.cognitive_context.why_saved_status == "user-guided"
-    assert result.cognitive_context.confidence == 0.85
+    assert result.cognitive_context.why_saved == why
+    assert result.cognitive_context.why_saved_status == "user-stated"
+    assert result.cognitive_context.confidence == 1.0
 
     page_text = result.page.absolute_page_path.read_text(encoding="utf-8")
     assert "- Why this may have been saved:" in page_text
-    assert "- Status: user-guided" in page_text
+    assert "- Status: user-stated" in page_text
     assert "## Supportive Signals" in page_text
 
     with sqlite3.connect(workspace.sqlite_path) as conn:
@@ -67,7 +69,7 @@ def test_ingest_uses_user_hint_to_guide_inference(tmp_path: Path) -> None:
             """,
             (result.source.id,),
         ).fetchone()
-    assert row == (result.cognitive_context.why_saved, "user-guided")
+    assert row == (why, "user-stated")
 
 
 def test_ingest_without_why_is_ai_inferred(tmp_path: Path) -> None:
@@ -141,6 +143,73 @@ def test_experimental_image_ingest_uses_mock_placeholder(tmp_path: Path) -> None
     assert "支持视觉能力的 LLM provider" in page_text
 
 
+def test_pdf_ingest_saves_file_shell_and_user_reason(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n% born digital placeholder\n")
+    workspace = Workspace(tmp_path)
+    why = "I saved this PDF because it may answer the agent memory evaluation question."
+
+    result = ingest_source(workspace, pdf_path, why=why)
+
+    assert result.source.type == "pdf"
+    assert result.raw_path.parent.name == "pdfs"
+    assert result.cognitive_context.why_saved == why
+    assert result.cognitive_context.why_saved_status == "user-stated"
+    assert "没有从这份 PDF 中提取到可用正文" in (result.source.summary or "")
+
+    page_text = result.page.absolute_page_path.read_text(encoding="utf-8")
+    assert "type: pdf" in page_text
+    assert why in page_text
+    assert "没有从这份 PDF 中提取到可用正文" in page_text
+
+
+def test_pdf_ingest_extracts_text_when_pdftotext_is_available(tmp_path: Path, monkeypatch) -> None:
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n% placeholder\n")
+    workspace = Workspace(tmp_path)
+
+    monkeypatch.setattr(
+        parsers.shutil,
+        "which",
+        lambda name: "/usr/bin/pdftotext" if name == "pdftotext" else None,
+    )
+
+    def fake_run(*_args, **_kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout="# Agent Memory Paper\n\nContext-rich capture beats raw storage.\n",
+        )
+
+    monkeypatch.setattr(parsers.subprocess, "run", fake_run)
+
+    result = ingest_source(workspace, pdf_path, why="This paper explains the recall problem.")
+
+    assert result.source.type == "pdf"
+    assert result.source.summary == "Agent Memory Paper"
+    page_text = result.page.absolute_page_path.read_text(encoding="utf-8")
+    assert "Agent Memory Paper" in page_text
+    assert "Context-rich capture beats raw storage." in page_text
+
+
+def test_html_ingest_extracts_readable_webpage_text(tmp_path: Path) -> None:
+    html_path = tmp_path / "article.html"
+    html_path.write_text(
+        "<html><head><title>Memory Article</title><style>.x{}</style></head>"
+        "<body><h1>Ignored heading</h1><p>Graph memory needs context.</p>"
+        "<script>alert('skip')</script></body></html>",
+        encoding="utf-8",
+    )
+    workspace = Workspace(tmp_path)
+
+    result = ingest_source(workspace, html_path)
+
+    assert result.source.type == "webpage"
+    assert result.source.title == "Memory Article"
+    assert result.raw_path.parent.name == "webpages"
+    page_text = result.page.absolute_page_path.read_text(encoding="utf-8")
+    assert "Graph memory needs context." in page_text
+
+
 def test_update_cognitive_context_rewrites_graph_and_page(tmp_path: Path) -> None:
     source_path = tmp_path / "note.md"
     source_path.write_text("# Test Note\n\nOpen loop: first draft.\n", encoding="utf-8")
@@ -170,3 +239,31 @@ def test_update_cognitive_context_rewrites_graph_and_page(tmp_path: Path) -> Non
     graph = json.loads(workspace.graph_path.read_text(encoding="utf-8"))
     assert any(node["type"] == "project" and node["label"] == "Thesis proposal" for node in graph["nodes"])
     assert not any(node["type"] == "question" and result.source.id in node["id"] for node in graph["nodes"])
+
+
+def test_update_cognitive_context_preserves_duplicate_edge(tmp_path: Path) -> None:
+    source_path = tmp_path / "note.md"
+    source_path.write_text("# Test Note\n\nSame content.\n", encoding="utf-8")
+    workspace = Workspace(tmp_path)
+    create_workspace(workspace)
+    first = ingest_source(workspace, source_path)
+    second = ingest_source(workspace, source_path)
+
+    before_graph = json.loads(workspace.graph_path.read_text(encoding="utf-8"))
+    assert any(edge["relation"] == "related_to" for edge in before_graph["edges"])
+
+    update_cognitive_context(
+        workspace,
+        second.source.id,
+        why_saved="This duplicate still matters as a separate captured moment.",
+        confirm=True,
+    )
+
+    after_graph = json.loads(workspace.graph_path.read_text(encoding="utf-8"))
+    duplicate_edges = [edge for edge in after_graph["edges"] if edge["relation"] == "related_to"]
+    assert duplicate_edges
+    assert any(
+        edge["source"] == f"source_{second.source.id}"
+        and edge["target"] == f"source_{first.source.id}"
+        for edge in duplicate_edges
+    )

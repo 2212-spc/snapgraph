@@ -124,33 +124,34 @@ class MockLLM(LLMProvider):
             if open_loops
             else f"回看 {primary.get('source_page', '')}，确认这条保存理由现在是否仍然成立。"
         )
+        user_lines = [
+            f"- `{context.get('title', '')}`：{context.get('why_saved', '')} ({context.get('why_saved_status', '')})"
+            for context in contexts
+            if context.get("why_saved_status") == "user-stated"
+        ] or [
+            f"- `{primary.get('title', '')}`：{primary.get('why_saved', '')} ({primary.get('why_saved_status', '')})"
+        ]
         return "\n".join(
             [
                 "# 回答",
-                "## 直接回答",
-                (
-                    f"你当时很可能保存了 `{primary.get('title', '')}`，因为它和 {project} 有关。"
-                    f"当前保留下来的理由是：{primary.get('why_saved', '')}。"
-                    f"从知识库里恢复出的最具体下一步是：{next_action}"
-                ),
+                "## 找回的原话",
+                *user_lines[:3],
                 "",
-                "## 恢复出的认知上下文",
-                f"状态分布：{status_summary}。",
-                *[
-                    f"- `{context.get('title', '')}`：{context.get('why_saved', '')} "
-                    f"({context.get('why_saved_status', '')})"
-                    for context in contexts
-                ],
-                "",
-                "## 证据来源",
+                "## 相关材料",
                 *evidence_lines,
                 "",
-                "## 图谱路径",
+                "## 连接路径",
                 "```text",
                 *graph_path_lines,
                 "```",
                 "",
-                "## 建议的下一步",
+                "## 涌现洞见",
+                (
+                    f"这条线索最可能连向 `{project}`。"
+                    f"状态分布：{status_summary}。先沿用户原话继续追问，比从泛泛材料摘要开始更可靠。"
+                ),
+                "",
+                "## 下一步",
                 next_action,
             ]
         )
@@ -160,20 +161,23 @@ def _template_no_answer() -> str:
     return "\n".join(
         [
             "# 回答",
-            "## 直接回答",
+            "## 找回的原话",
             "低置信度：我没有找到匹配的 wiki 页面或图谱路径。"
             "在缺少证据时，我不会推断保存原因。",
             "",
-            "## 证据来源",
+            "## 相关材料",
             "无。",
             "",
-            "## 图谱路径",
+            "## 连接路径",
             "```text",
             "无。",
             "```",
             "",
-            "## 建议的下一步",
-            "先导入相关材料，或补一条简短的 `--why` 提示，再重新提问。",
+            "## 涌现洞见",
+            "无可靠证据时不生成洞见。",
+            "",
+            "## 下一步",
+            "先收集相关材料，或换一个更接近当时材料、项目、判断的线索再问。",
         ]
     )
 

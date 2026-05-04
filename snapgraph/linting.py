@@ -312,7 +312,7 @@ def _check_cognitive_context_against_page(
         return
     why_saved, why_saved_status = row
     if why_saved_status in {"user-stated", "user-guided"} and why_saved not in page_text:
-        warnings.append(f"{source_id} user-guided why_saved is not preserved in source page")
+        warnings.append(f"{source_id} user-stated why_saved is not preserved in source page")
 
 
 def _check_graph(
