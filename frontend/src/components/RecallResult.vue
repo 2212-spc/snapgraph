@@ -1,7 +1,35 @@
 <template>
   <section class="recall-result">
-    <div class="result-kicker">记忆找回</div>
-    <h2>{{ resultTitle }}</h2>
+    <article class="answer-card">
+      <div class="answer-card-head">
+        <div>
+          <div class="result-kicker">记忆找回</div>
+          <h2>这是我的回答</h2>
+        </div>
+        <div v-if="evidenceSummaryChips.length" class="evidence-summary">
+          <span
+            v-for="chip in evidenceSummaryChips"
+            :key="chip.label"
+            class="evidence-chip"
+            :class="chip.tone"
+          >
+            {{ chip.label }}
+          </span>
+        </div>
+        <p v-if="evidenceCompactSummary" class="evidence-summary-compact">
+          {{ evidenceCompactSummary }}
+        </p>
+      </div>
+
+      <div class="answer-question-block">
+        <span class="answer-question-label">你的问题</span>
+        <p class="answer-question">{{ questionText }}</p>
+      </div>
+
+      <div class="answer-card-body">
+        <p v-for="block in answerBlocks" :key="block">{{ block }}</p>
+      </div>
+    </article>
 
     <div v-if="stages.length" class="agent-trace" aria-label="AI response progress">
       <div
@@ -18,94 +46,213 @@
       </div>
     </div>
 
-    <article class="result-panel ai-answer wide">
-      <div class="panel-label">
-        <span>AI 回复</span>
-        <small>下面是依据</small>
+    <section class="evidence-chain">
+      <div class="section-head">
+        <div class="section-kicker">证据链</div>
+        <h3>证据链</h3>
+        <p>这次回答不是网页搜索，而是从你的本地记忆材料里推回来的。</p>
       </div>
-      <div class="ai-answer-body">
-        <p v-for="block in aiExplorationBlocks" :key="block">{{ block }}</p>
+
+      <div class="evidence-grid">
+        <article class="evidence-block">
+          <div class="evidence-block-head">
+            <div>
+              <span class="evidence-badge tone-user">user-stated / 用户原话</span>
+              <strong>用户原话</strong>
+            </div>
+            <small v-if="userStatements.length">{{ userStatements.length }} 条</small>
+          </div>
+
+          <div v-if="userStatements.length" class="evidence-list">
+            <article
+              v-for="card in userStatements"
+              :key="card.source_id"
+              class="evidence-row evidence-row-user"
+            >
+              <strong>{{ card.title }}</strong>
+              <p>{{ displayReason(card.why_saved || card.source_excerpt, card.why_saved_status) }}</p>
+            </article>
+          </div>
+          <p v-else class="subtle-empty-state">这次结果里还没有稳定可用的用户原话。</p>
+        </article>
+
+        <article class="evidence-block">
+          <div class="evidence-block-head">
+            <div>
+              <span class="evidence-badge tone-source">source / 材料</span>
+              <strong>相关材料</strong>
+            </div>
+            <small v-if="materials.length">{{ materials.length }} 条</small>
+          </div>
+
+          <p v-if="evidenceMaterialPreview.length" class="evidence-block-caption">
+            这几条材料最直接支撑了当前回答，完整列表仍放在下方。
+          </p>
+          <div v-if="evidenceMaterialPreview.length" class="evidence-list">
+            <article
+              v-for="card in evidenceMaterialPreview"
+              :key="card.source_id"
+              class="evidence-row"
+            >
+              <strong>{{ card.title }}</strong>
+              <p>{{ materialSupportText(card) }}</p>
+            </article>
+          </div>
+          <p v-else class="subtle-empty-state">还没有可展示的相关材料。</p>
+        </article>
+
+        <details class="evidence-block collapsible">
+          <summary class="evidence-block-head">
+            <div>
+              <span class="evidence-badge tone-graph">graph-path / 图谱路径</span>
+              <strong>图谱路径</strong>
+            </div>
+            <small>{{ graphPaths.length ? `${graphPaths.length} 条` : '暂时没有' }}</small>
+          </summary>
+
+          <div v-if="graphPaths.length" class="path-list">
+            <p v-for="path in graphPaths" :key="path" class="graph-path-row">{{ path }}</p>
+          </div>
+          <p v-else class="subtle-empty-state">这次结果还没有稳定的图谱路径可展示。</p>
+        </details>
+
+        <details class="evidence-block collapsible">
+          <summary class="evidence-block-head">
+            <div>
+              <span class="evidence-badge tone-ai">AI-inferred / AI 推断</span>
+              <strong>AI 推断</strong>
+            </div>
+            <small>{{ aiInferences.length ? `${aiInferences.length} 条` : '暂时没有' }}</small>
+          </summary>
+
+          <div v-if="aiInferences.length" class="evidence-list">
+            <article
+              v-for="card in aiInferences"
+              :key="card.source_id"
+              class="evidence-row evidence-row-ai"
+            >
+              <strong>{{ card.title }}</strong>
+              <p>{{ displayReason(card.why_saved || card.source_excerpt, card.why_saved_status) }}</p>
+            </article>
+          </div>
+          <p v-else class="subtle-empty-state">这次回答没有额外使用 AI 推断来补足线索。</p>
+        </details>
       </div>
-    </article>
+    </section>
 
-    <div class="result-grid">
-      <article class="result-panel primary">
-        <span>找回的原话</span>
-        <template v-if="originalLines.length">
-          <p v-for="line in originalLines" :key="line">{{ line }}</p>
-        </template>
-        <p v-else>没有用户原话。当前结果只能作为低置信度提示。</p>
-      </article>
+    <section class="result-panel wide related-materials">
+      <div class="section-head compact">
+        <div class="section-kicker">相关材料</div>
+        <h3>相关材料</h3>
+        <p>默认先展开最相关的 3 条，其余材料按需查看。</p>
+      </div>
 
-      <article class="result-panel">
-        <span>涌现洞见</span>
-        <p>{{ insightText }}</p>
-      </article>
-    </div>
-
-    <article class="result-panel wide">
-      <span>相关材料</span>
-      <div class="material-list" v-if="materials.length">
-        <div v-for="card in materials" :key="card.source_id" class="material-row">
-          <strong>{{ card.title }}</strong>
-          <small :class="card.why_saved_status === 'user-stated' ? 'status-user' : 'status-ai'">
-            {{ card.why_saved_status === 'user-stated' ? '用户原话' : 'AI 推断' }} · {{ card.space_name || '图谱' }}
-          </small>
+      <div v-if="visibleMaterials.length" class="source-card-list">
+        <article v-for="card in visibleMaterials" :key="card.source_id" class="source-card">
+          <div class="source-card-head">
+            <div class="source-card-meta">
+              <strong>{{ card.title }}</strong>
+              <span class="evidence-badge" :class="materialTone(card)">
+                {{ materialBadge(card) }}
+              </span>
+            </div>
+            <a
+              class="source-link-button"
+              :href="sourceHref(card.source_id)"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              打开来源
+            </a>
+          </div>
           <p>{{ displayReason(card.why_saved || card.source_excerpt, card.why_saved_status) }}</p>
-        </div>
-      </div>
-      <p v-else>没有可靠材料。</p>
-    </article>
+        </article>
 
-    <div class="result-grid">
-      <article class="result-panel">
-        <span>连接路径</span>
-        <pre>{{ connectionText }}</pre>
-      </article>
-      <article class="result-panel">
-        <span>下一步</span>
-        <p>{{ nextText }}</p>
-      </article>
-    </div>
+        <button
+          v-if="materials.length > previewLimit"
+          class="ghost-button materials-toggle"
+          type="button"
+          @click="showAllMaterials = !showAllMaterials"
+        >
+          {{ showAllMaterials ? '收起材料' : `查看全部材料（+${materials.length - previewLimit}）` }}
+        </button>
+      </div>
+      <p v-else class="subtle-empty-state">这次找回还没有返回可展示的相关材料。</p>
+    </section>
+
+    <article v-if="nextText" class="result-panel wide recall-next-step">
+      <span>下一步</span>
+      <p>{{ nextText }}</p>
+    </article>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AskResponse, EvidenceCard, FocusGraph, RecallStage } from '../types'
+
+type SummaryChip = {
+  label: string
+  tone: string
+}
 
 const props = defineProps<{
   result: AskResponse | null
   focusGraph: FocusGraph | null
   busy: boolean
   stages: RecallStage[]
+  question: string
 }>()
 
+const previewLimit = 3
+const evidenceMaterialLimit = 2
+const showAllMaterials = ref(false)
+
 const materials = computed<EvidenceCard[]>(() => props.result?.contexts || props.focusGraph?.evidence_cards || [])
-const hasEvidence = computed(() => materials.value.length > 0)
-const aiExplorationText = computed(() => sectionText('## AI 探索回应') || fallbackAiExploration())
-const aiExplorationBlocks = computed(() => splitBlocks(aiExplorationText.value))
-const resultTitle = computed(() => {
-  if (props.busy && props.result) return 'AI 正在回答'
-  if (props.result) return hasEvidence.value ? '这是我的回答' : '还没有足够证据'
-  if (props.busy && hasEvidence.value) return '正在组织回答'
-  return hasEvidence.value ? '先浮出本地线索' : '还没有足够线索'
+const userStatements = computed(() => materials.value.filter((card) => card.why_saved_status === 'user-stated'))
+const aiInferences = computed(() => materials.value.filter((card) => card.why_saved_status !== 'user-stated'))
+const evidenceMaterialPreview = computed(() => materials.value.slice(0, evidenceMaterialLimit))
+const visibleMaterials = computed(() => showAllMaterials.value ? materials.value : materials.value.slice(0, previewLimit))
+const graphPaths = computed(() => {
+  if (props.result?.graph_paths?.length) {
+    return props.result.graph_paths.map((item) => item.trim()).filter(Boolean)
+  }
+  return sectionText('## 连接路径')
+    .split('\n')
+    .map((line) => line.replace(/^[-\d.]+\s*/, '').trim())
+    .filter(Boolean)
 })
-const originalLines = computed(() => {
-  const fromAnswer = sectionLines('## 找回的原话')
-  if (fromAnswer.length) return fromAnswer.slice(0, 3)
-  return materials.value
-    .filter((card) => card.why_saved_status === 'user-stated' && card.why_saved)
-    .slice(0, 3)
-    .map((card) => `${card.title}：${card.why_saved}`)
-})
-const insightText = computed(() => sectionText('## 涌现洞见') || fallbackInsight())
+const answerText = computed(() => normalizeAnswerText(sectionText('## AI 探索回应') || fallbackAnswerText()))
+const answerBlocks = computed(() => splitBlocks(answerText.value))
 const nextText = computed(() => sectionText('## 下一步') || fallbackNext())
-const connectionText = computed(() => {
-  const text = sectionText('## 连接路径')
-  if (text) return text.replace(/```text|```/g, '').trim()
-  if (props.result?.graph_paths.length) return props.result.graph_paths.join('\n')
-  return '还没有形成可靠连接路径。'
+const questionText = computed(() => props.question || props.result?.question || '正在从你的本地记忆里组织这个问题。')
+const evidenceCompactSummary = computed(() => {
+  const parts: string[] = []
+  if (materials.value.length) parts.push(`${materials.value.length} 材料`)
+  if (userStatements.value.length) parts.push(`${userStatements.value.length} 原话`)
+  if (graphPaths.value.length) parts.push(`${graphPaths.value.length} 路径`)
+  if (aiInferences.value.length) parts.push(`${aiInferences.value.length} 推断`)
+  return parts.join(' · ')
+})
+const evidenceSummaryChips = computed<SummaryChip[]>(() => {
+  const chips: SummaryChip[] = []
+  if (materials.value.length) {
+    chips.push({ label: `基于 ${materials.value.length} 条材料`, tone: 'tone-source' })
+  }
+  if (userStatements.value.length) {
+    chips.push({ label: `${userStatements.value.length} 条用户原话`, tone: 'tone-user' })
+  }
+  if (graphPaths.value.length) {
+    chips.push({ label: `${graphPaths.value.length} 条图谱路径`, tone: 'tone-graph' })
+  }
+  if (aiInferences.value.length) {
+    chips.push({ label: `${aiInferences.value.length} 条 AI 推断`, tone: 'tone-ai' })
+  }
+  return chips
+})
+
+watch(materials, () => {
+  showAllMaterials.value = false
 })
 
 function sectionText(heading: string) {
@@ -117,50 +264,98 @@ function sectionText(heading: string) {
   return cleanText((next >= 0 ? after.slice(0, next) : after).trim())
 }
 
-function sectionLines(heading: string) {
-  return sectionText(heading)
-    .split('\n')
-    .map((line) => line.replace(/^[-\d.]+\s*/, '').trim())
-    .filter(Boolean)
-}
-
-function fallbackInsight() {
-  const userCount = materials.value.filter((card) => card.why_saved_status === 'user-stated').length
-  if (!materials.value.length) return '没有证据时不生成洞见。'
-  return `${userCount} 条材料带有用户原话。先沿这些原话继续追问，比从泛泛摘要开始更可靠。`
-}
-
-function fallbackAiExploration() {
-  if (!props.result && props.busy && materials.value.length) {
-    return '我已经先找到了相关线索，正在把它们整理成回答。下面的内容只是依据，还不是最终回复。'
-  }
-  if (!props.result && materials.value.length) {
-    return '模型回复暂时不可用。下面这些线索可以继续作为追问入口，但还不是完整回答。'
-  }
+function fallbackAnswerText() {
   if (!materials.value.length) {
-    return '还没有足够证据支撑 AI 探索回应。换一个更接近旧材料、项目或判断的线索再问。'
+    return '还没有足够证据支撑回答。换一个更接近旧材料、保存理由或图谱连接的问题再试一次。'
   }
+  if (props.busy) {
+    return '我已经先找到了本地线索，正在把这些材料、保存理由和图谱连接整理成一条可读的判断链。'
+  }
+
   const titles = materials.value.slice(0, 3).map((card) => card.title).join('、')
-  const userCount = materials.value.filter((card) => card.why_saved_status === 'user-stated').length
-  return (
-    `我找到了和这个问题相关的旧材料：${titles}。`
-    + `其中 ${userCount} 条带有你当时写下的原话。`
-    + '我会先用这些原话恢复当时的判断，再用其他材料补足证据和反例。'
-  )
+  return `这次找回优先参考了 ${titles}。我会先把用户原话和关键材料对齐，再补上图谱路径与 AI 推断，让答案尽量回到你当时真正的判断依据。`
+}
+
+function normalizeAnswerText(text: string) {
+  const evidenceGuidanceSentence = '其中用户原话是主要依据，AI 推断用于补充可能的连接。'
+  const evidencePlaceholder = '__SNAPGRAPH_EVIDENCE_GUIDANCE__'
+  const fieldPatterns = [
+    /(?:当前)?(?:证据状态(?:是)?|evidence status)\s*[：:]\s*[^。！？!\n]*/gi,
+    /\bwhy_saved_status\b\s*[：:]?\s*[\w-]*/gi,
+    /\b(?:user[-_]stated|AI[-_]inferred|ai[-_]inferred)\b\s*[：:]?\s*\d*/gi,
+  ]
+
+  let cleaned = text
+  for (const pattern of fieldPatterns) {
+    cleaned = cleaned.replace(pattern, evidencePlaceholder)
+  }
+
+  const alreadyExplained = cleaned.includes(evidenceGuidanceSentence)
+  let insertedGuidance = false
+
+  return cleaned
+    .replace(new RegExp(`(?:\\s*[，,；;:：-]?\\s*${evidencePlaceholder}\\s*)+`, 'g'), ` ${evidencePlaceholder} `)
+    .replace(new RegExp(evidencePlaceholder, 'g'), () => {
+      if (alreadyExplained || insertedGuidance) return ''
+      insertedGuidance = true
+      return evidenceGuidanceSentence
+    })
+    .replace(/\s+(?=其中用户原话是主要依据，AI 推断用于补充可能的连接。)/g, '，')
+    .replace(/([；;，,])\s*(?=其中用户原话是主要依据，AI 推断用于补充可能的连接。)/g, ' ')
+    .replace(/(?:其中用户原话是主要依据，AI 推断用于补充可能的连接。[。！？!\s]*){2,}/g, evidenceGuidanceSentence)
+    .replace(/([。！？；，]){2,}/g, '$1')
+    .replace(/[。.]{2,}/g, '。')
+    .replace(/\s+([，。！？；])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }
 
 function fallbackNext() {
   for (const card of materials.value) {
     const loop = card.open_loops.find((item) => item && item !== 'None')
-    if (loop) return loop.replace(/^Open loop:\s*/i, '').replace(/^Todo:\s*/i, '').trim()
+    if (loop) {
+      return loop.replace(/^Open loop:\s*/i, '').replace(/^Todo:\s*/i, '').trim()
+    }
   }
-  return materials.value.length ? '回看第一条材料，确认这条保存理由现在是否仍然成立。' : '换一个更接近当时材料、项目、判断的线索再问。'
+  return materials.value.length ? '从最相关的 1 到 2 条材料继续追问，确认这条判断今天是否仍然成立。' : ''
 }
 
 function displayReason(reason: string, status: string) {
-  const cleaned = cleanText(reason.replace(/^AI-inferred:\s*/i, '').trim())
-  if (!cleaned) return '没有可展示的理由。'
+  const cleaned = cleanText((reason || '').replace(/^AI-inferred:\s*/i, '').trim())
+  if (!cleaned) {
+    return '这条材料暂时还没有可直接展示的一句话摘要。'
+  }
   return status === 'user-stated' ? cleaned : `系统推断：${cleaned}`
+}
+
+function materialSupportText(card: EvidenceCard) {
+  const cleaned = cleanText((card.why_saved || card.source_excerpt || '').replace(/^AI-inferred:\s*/i, '').trim())
+  if (!cleaned) {
+    return '它说明了这条材料与当前回答有关，但暂时没有更具体的一句话摘要。'
+  }
+  if (card.why_saved_status === 'user-stated') {
+    return `它直接说明了当时为什么会保存这条材料：${cleaned}`
+  }
+  if (card.why_saved_status === 'AI-inferred') {
+    return `它补充了这次回答可能依赖的连接：${cleaned}`
+  }
+  return `它提供了这次回答所依赖的材料线索：${cleaned}`
+}
+
+function materialBadge(card: EvidenceCard) {
+  if (card.why_saved_status === 'user-stated') return 'user-stated / 用户原话'
+  if (card.why_saved_status === 'AI-inferred') return 'AI-inferred / AI 推断'
+  return 'source / 材料'
+}
+
+function materialTone(card: EvidenceCard) {
+  if (card.why_saved_status === 'user-stated') return 'tone-user'
+  if (card.why_saved_status === 'AI-inferred') return 'tone-ai'
+  return 'tone-source'
+}
+
+function sourceHref(sourceId: string) {
+  return `/api/sources/${encodeURIComponent(sourceId)}`
 }
 
 function cleanText(markdown: string) {

@@ -37,6 +37,7 @@
         :result="askResult"
         :focus-graph="focusGraph"
         :stages="recallStages"
+        :current-question="currentRecallQuestion"
         @recall="runRecall"
       />
 
@@ -65,6 +66,7 @@
         :spaces="spaces"
         :results="collectResults"
         @collect="collectMaterials"
+        @open-space="openCollectedSpace"
       />
     </main>
 
@@ -156,6 +158,7 @@ const spaceGraph = ref<GraphPayload>({ nodes: [], edges: [] })
 const spaceSuggestions = ref<Suggestion[]>([])
 const focusGraph = ref<FocusGraph | null>(null)
 const askResult = ref<AskResponse | null>(null)
+const currentRecallQuestion = ref('')
 const recallStages = ref<RecallStage[]>([])
 const collectResults = ref<IngestResponse[]>([])
 const settingsOpen = ref(false)
@@ -241,6 +244,7 @@ async function askFromGraph(question: string) {
 
 async function runRecall(question: string) {
   busy.value = true
+  currentRecallQuestion.value = question
   askResult.value = null
   focusGraph.value = null
   recallStages.value = [
@@ -388,6 +392,12 @@ async function collectMaterials(payload: CollectPayload) {
     busy.value = false
     busyStage.value = ''
   }
+}
+
+async function openCollectedSpace(spaceId: string) {
+  if (!spaceId) return
+  activeView.value = 'spaces'
+  await selectSpace(spaceId)
 }
 
 async function createSpace(payload: { name: string; purpose: string; description: string; color: string }) {
