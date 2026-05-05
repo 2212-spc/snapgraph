@@ -7,19 +7,44 @@
         <p>空间不是写之前的分类负担，而是材料进入后逐渐显出的结构。</p>
       </div>
 
-      <section class="space-grid">
-        <button
-          v-for="space in visibleSpaces"
-          :key="space.id"
-          class="space-card"
-          :style="{ '--space-color': space.color }"
-          @click="$emit('selectSpace', space.id)"
+      <section class="space-grid memory-space-grid">
+        <article
+          v-for="spaceCard in graphSpaceCards"
+          :key="spaceCard.id"
+          class="graph-space-card"
+          :style="{ '--space-color': spaceCard.color }"
         >
-          <span>{{ space.id === 'inbox' ? '待整理' : '图谱空间' }}</span>
-          <strong>{{ space.name }}</strong>
-          <p>{{ space.purpose || space.description || '还没有写明这个空间追什么问题。' }}</p>
-          <small>{{ space.source_count }} 材料 · {{ space.node_count }} 节点 · {{ space.pending_suggestions }} 建议</small>
-        </button>
+          <div class="graph-space-card-head">
+            <div>
+              <span>{{ spaceCard.kicker }}</span>
+              <strong>{{ spaceCard.name }}</strong>
+            </div>
+            <div class="graph-space-stats">
+              <span class="graph-stat-chip">{{ spaceCard.sourceCount }} 材料</span>
+              <span class="graph-stat-chip">{{ spaceCard.nodeCount }} 节点</span>
+              <span v-if="spaceCard.openItemCount" class="graph-stat-chip">
+                {{ spaceCard.openItemCount }} {{ spaceCard.openItemLabel }}
+              </span>
+            </div>
+          </div>
+
+          <p>{{ spaceCard.description }}</p>
+
+          <div class="graph-space-meta">
+            <strong>最近材料</strong>
+            <p v-if="spaceCard.recentSourceTitles.length">
+              {{ spaceCard.recentSourceTitles.join(' · ') }}
+            </p>
+            <p v-else class="subtle-empty-state">还没有最近材料，等新内容进入后再回来看看。</p>
+          </div>
+
+          <footer class="graph-space-footer">
+            <small v-if="spaceCard.lastActiveLabel">{{ spaceCard.lastActiveLabel }}</small>
+            <button class="primary-button" :disabled="busy" @click="$emit('selectSpace', spaceCard.id)">
+              进入空间
+            </button>
+          </footer>
+        </article>
       </section>
 
       <form class="create-space" @submit.prevent="submitSpace">
@@ -60,11 +85,26 @@ import { computed, ref } from 'vue'
 import GraphSpaceView from './GraphSpaceView.vue'
 import type { ContextUpdatePayload, GraphPayload, GraphSpace, Source, Suggestion } from '../types'
 
+type GraphSpaceCard = {
+  id: string
+  name: string
+  kicker: string
+  description: string
+  color: string
+  sourceCount: number
+  nodeCount: number
+  openItemCount: number
+  openItemLabel: string
+  recentSourceTitles: string[]
+  lastActiveLabel: string
+}
+
 const props = defineProps<{
   busy: boolean
   spaces: GraphSpace[]
   selectedSpaceId: string
   sources: Source[]
+  allSources: Source[]
   graph: GraphPayload
   suggestions: Suggestion[]
 }>()
@@ -88,6 +128,40 @@ const color = ref('#315f9f')
 
 const selectedSpace = computed(() => props.spaces.find((space) => space.id === props.selectedSpaceId) || null)
 const visibleSpaces = computed(() => props.spaces.filter((space) => space.status === 'active'))
+const sourcesBySpaceId = computed(() => {
+  const buckets = new Map<string, Source[]>()
+  for (const source of props.allSources) {
+    const existing = buckets.get(source.graph_space_id) || []
+    existing.push(source)
+    buckets.set(source.graph_space_id, existing)
+  }
+  return buckets
+})
+
+const graphSpaceCards = computed<GraphSpaceCard[]>(() => {
+  return visibleSpaces.value.map((space) => {
+    const recentSources = [...(sourcesBySpaceId.value.get(space.id) || [])]
+      .sort((left, right) => Date.parse(right.imported_at || '') - Date.parse(left.imported_at || ''))
+    const openLoopCount = recentSources.reduce((total, source) => total + (source.open_loops?.length || 0), 0)
+    const recentSourceTitles = recentSources.slice(0, 3).map((source) => source.title)
+    const lastActive = recentSources[0]?.imported_at || space.updated_at || ''
+    const pendingCount = space.pending_suggestions || openLoopCount
+
+    return {
+      id: space.id,
+      name: space.name,
+      kicker: space.id === 'inbox' ? '记忆入口' : '记忆空间',
+      description: spaceDescription(space),
+      color: space.color,
+      sourceCount: space.source_count,
+      nodeCount: space.node_count,
+      openItemCount: pendingCount,
+      openItemLabel: space.pending_suggestions ? '建议' : '开放问题',
+      recentSourceTitles,
+      lastActiveLabel: lastActive ? `最近活跃：${formatDate(lastActive)}` : '',
+    }
+  })
+})
 
 function submitSpace() {
   if (!name.value.trim()) return
@@ -100,5 +174,26 @@ function submitSpace() {
   name.value = ''
   purpose.value = ''
   description.value = ''
+}
+
+function spaceDescription(space: GraphSpace) {
+  if (space.id === 'inbox') {
+    return '新材料会先放在这里，等待确认和整理。'
+  }
+  if (space.id === 'default') {
+    return '默认记忆空间，保存当前 SnapGraph 工作流的主要材料、判断和开放问题。'
+  }
+  return space.purpose || space.description || '这个空间正在等待更多材料，逐步长出自己的问题结构。'
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '刚刚'
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
 }
 </script>

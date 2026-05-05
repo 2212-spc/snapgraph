@@ -47,6 +47,7 @@
         :spaces="spaces"
         :selected-space-id="selectedSpaceId"
         :sources="spaceSources"
+        :all-sources="allSources"
         :graph="spaceGraph"
         :suggestions="spaceSuggestions"
         @select-space="selectSpace"

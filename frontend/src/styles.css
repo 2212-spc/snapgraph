@@ -813,6 +813,7 @@ button:not(:disabled):hover {
 .result-panel,
 .collect-card,
 .queue-item,
+.graph-space-card,
 .space-card,
 .create-space,
 .space-detail,
@@ -894,6 +895,7 @@ button:not(:disabled):hover {
 .result-panel p,
 .material-row p,
 .queue-item p,
+.graph-space-card p,
 .space-card p,
 .space-detail header p,
 .space-panel p,
@@ -1317,30 +1319,90 @@ button:not(:disabled):hover {
 .space-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
-.space-card {
-  min-height: 184px;
+.memory-space-grid {
+  align-items: stretch;
+}
+
+.graph-space-card {
+  min-height: 238px;
   display: grid;
   align-content: start;
-  gap: 8px;
-  padding: 18px;
+  gap: 16px;
+  padding: 20px;
   text-align: left;
   color: var(--ink);
   border-top: 4px solid var(--space-color, var(--blue));
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 248, 243, 0.94)),
+    var(--card-bg);
+  box-shadow: var(--shadow-lift);
 }
 
-.space-card span {
+.graph-space-card-head {
+  display: grid;
+  gap: 12px;
+}
+
+.graph-space-card-head span {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 760;
 }
 
-.space-card strong {
+.graph-space-card-head strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
   font-family: var(--serif);
-  font-size: 1.24rem;
+  font-size: 1.36rem;
   font-weight: 650;
+}
+
+.graph-space-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.graph-stat-chip {
+  border: 1px solid rgba(77, 61, 42, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink-soft);
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 760;
+}
+
+.graph-space-meta,
+.graph-space-footer,
+.graph-project-row,
+.graph-overview-list {
+  display: grid;
+  gap: 10px;
+}
+
+.graph-space-meta strong,
+.graph-card-row strong {
+  color: var(--ink);
+  font-size: 0.96rem;
+}
+
+.graph-space-footer {
+  margin-top: auto;
+}
+
+.graph-space-footer small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.graph-space-footer .primary-button {
+  justify-self: flex-start;
 }
 
 .create-space {
@@ -1373,6 +1435,7 @@ button:not(:disabled):hover {
 
 .space-detail {
   padding: clamp(18px, 3vw, 26px);
+  border-radius: 16px;
 }
 
 .space-detail header {
@@ -1392,6 +1455,96 @@ button:not(:disabled):hover {
   font-weight: 650;
 }
 
+.space-detail-topbar {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.graph-space-detail {
+  display: grid;
+  gap: 18px;
+}
+
+.graph-overview-mode {
+  display: grid;
+  gap: 18px;
+}
+
+.graph-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.graph-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.graph-summary-card {
+  display: grid;
+  gap: 14px;
+  min-height: 220px;
+  border-radius: 16px;
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 248, 243, 0.92)),
+    var(--card-bg);
+}
+
+.graph-card-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.graph-recent-source-card,
+.graph-key-node-card,
+.open-loop-card {
+  border: 1px solid rgba(77, 61, 42, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 14px;
+}
+
+.graph-recent-source-card p,
+.graph-key-node-card p,
+.open-loop-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.62;
+}
+
+.graph-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 254, 253, 0.82);
+  padding: 4px;
+}
+
+.graph-mode-switch button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0 14px;
+  font-size: 0.88rem;
+  font-weight: 760;
+}
+
+.graph-mode-switch button.active {
+  background: #28231d;
+  color: #fffdf8;
+  box-shadow: var(--shadow-paper);
+}
+
 .space-stats {
   display: flex;
   flex-wrap: wrap;
@@ -1408,14 +1561,9 @@ button:not(:disabled):hover {
   font-size: 0.82rem;
 }
 
-.space-columns {
-  display: grid;
-  grid-template-columns: minmax(230px, 0.9fr) minmax(280px, 1.15fr) minmax(260px, 1fr);
-  gap: 14px;
-}
-
 .graph-workbench {
-  padding: clamp(16px, 2.4vw, 24px);
+  display: grid;
+  gap: 14px;
 }
 
 .space-workbench-head {
@@ -1425,7 +1573,7 @@ button:not(:disabled):hover {
 .graph-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin: 0 0 14px;
@@ -1435,11 +1583,9 @@ button:not(:disabled):hover {
   padding: 8px;
 }
 
-.graph-toolbar div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+.graph-toolbar-group {
+  display: grid;
+  gap: 8px;
 }
 
 .graph-toolbar span {
@@ -1447,6 +1593,13 @@ button:not(:disabled):hover {
   font-size: 0.78rem;
   font-weight: 760;
   padding: 0 6px;
+}
+
+.graph-toolbar-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .graph-toolbar button {
@@ -1468,6 +1621,14 @@ button:not(:disabled):hover {
   background: #fffefd;
   color: var(--ink);
   box-shadow: 0 1px 2px rgba(60, 40, 20, 0.04);
+}
+
+.graph-view-caption {
+  margin: 0;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 .workbench-grid {
@@ -1904,6 +2065,9 @@ button:not(:disabled):hover {
   display: grid;
   align-content: start;
   gap: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(250, 248, 243, 0.82)),
+    var(--card-bg);
 }
 
 .graph-inspector > strong {
@@ -1942,6 +2106,19 @@ button:not(:disabled):hover {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.graph-empty-inspector {
+  border: 1px dashed rgba(77, 61, 42, 0.14);
+  border-radius: 14px;
+  background: rgba(246, 241, 234, 0.56);
+  color: var(--muted);
+  padding: 14px;
+}
+
+.graph-empty-inspector p {
+  margin: 0;
+  line-height: 1.62;
 }
 
 .context-editor {
@@ -2282,6 +2459,10 @@ button:not(:disabled):hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .graph-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
   .space-columns {
     grid-template-columns: 1fr;
   }
@@ -2307,6 +2488,10 @@ button:not(:disabled):hover {
 
   .space-panel {
     min-height: auto;
+  }
+
+  .space-detail-topbar {
+    justify-items: start;
   }
 }
 
@@ -2447,11 +2632,18 @@ button:not(:disabled):hover {
     justify-content: stretch;
   }
 
+  .graph-overview-actions,
+  .graph-space-footer {
+    display: grid;
+    justify-content: stretch;
+  }
+
   .graph-toolbar {
     align-items: stretch;
   }
 
-  .graph-toolbar div {
+  .graph-toolbar-group,
+  .graph-toolbar-buttons {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -2470,7 +2662,8 @@ button:not(:disabled):hover {
   .route-row,
   .receipt-section,
   .space-grid,
-  .suggestion-strip {
+  .suggestion-strip,
+  .graph-overview-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2492,6 +2685,10 @@ button:not(:disabled):hover {
     gap: 10px;
   }
 
+  .graph-card-row {
+    display: grid;
+  }
+
   .source-link-button {
     justify-self: flex-start;
   }
@@ -2503,5 +2700,14 @@ button:not(:disabled):hover {
 
   .space-stats {
     justify-content: flex-start;
+  }
+
+  .graph-mode-switch {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .graph-mode-switch button {
+    flex: 1 1 0;
   }
 }

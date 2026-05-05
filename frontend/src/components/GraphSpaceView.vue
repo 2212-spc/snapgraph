@@ -1,357 +1,486 @@
 <template>
-  <section class="space-detail graph-workbench" v-if="space">
-    <header class="space-workbench-head">
+  <section class="space-detail graph-space-detail" v-if="space">
+    <header class="space-detail-head">
       <div>
-        <p class="eyebrow">图谱操作台</p>
+        <p class="eyebrow">{{ surfaceMode === 'overview' ? '图谱概览' : '图谱操作台' }}</p>
         <h2>{{ space.name }}</h2>
-        <p>{{ space.purpose || space.description || '这个空间还没有写明用途。' }}</p>
+        <p>{{ spaceDescription }}</p>
       </div>
-      <div class="space-stats">
-        <span>{{ space.source_count }} 材料</span>
-        <span>{{ space.node_count }} 节点</span>
-        <span>{{ space.edge_count }} 边</span>
+      <div class="space-detail-topbar">
+        <div class="space-stats graph-space-stats">
+          <span class="graph-stat-chip">{{ space.source_count }} 材料</span>
+          <span class="graph-stat-chip">{{ space.node_count }} 节点</span>
+          <span class="graph-stat-chip">{{ space.edge_count }} 边</span>
+          <span v-if="overviewOpenCount" class="graph-stat-chip">
+            {{ overviewOpenCount }} {{ overviewOpenLabel }}
+          </span>
+        </div>
+
+        <div class="graph-mode-switch" role="tablist" aria-label="图谱模式切换">
+          <button
+            :class="{ active: surfaceMode === 'overview' }"
+            role="tab"
+            :aria-selected="surfaceMode === 'overview'"
+            @click="surfaceMode = 'overview'"
+          >
+            概览
+          </button>
+          <button
+            :class="{ active: surfaceMode === 'workbench' }"
+            role="tab"
+            :aria-selected="surfaceMode === 'workbench'"
+            @click="surfaceMode = 'workbench'"
+          >
+            专业模式
+          </button>
+        </div>
       </div>
     </header>
 
-    <details class="space-editor">
-      <summary>编辑空间</summary>
-      <div>
-        <input v-model="editSpaceName" placeholder="空间名称" />
-        <input v-model="editSpacePurpose" placeholder="这个空间追什么问题？" />
-        <textarea v-model="editSpaceDescription" placeholder="补充描述，可选。" />
-        <label>
-          <small>颜色</small>
-          <input v-model="editSpaceColor" type="color" />
-        </label>
-        <button class="paper-button" :disabled="busy || !editSpaceName.trim()" @click="saveSpace">
-          保存空间
-        </button>
+    <section v-if="surfaceMode === 'overview'" class="graph-overview-mode">
+      <div class="graph-overview-actions">
+        <button class="primary-button" @click="askFromSpace">找回这个空间里的判断</button>
+        <button class="paper-button" @click="openActionWorkbench">整理开放问题</button>
+        <button class="ghost-button" @click="surfaceMode = 'workbench'">进入专业模式</button>
       </div>
-    </details>
 
-    <div class="graph-toolbar" aria-label="Graph workspace controls">
-      <div>
-        <span>视图</span>
-        <button
-          v-for="mode in viewModes"
-          :key="mode.id"
-          :class="{ active: viewMode === mode.id }"
-          @click="viewMode = mode.id"
-        >
-          <component :is="mode.icon" :size="15" />
-          {{ mode.label }}
-        </button>
-      </div>
-      <div>
-        <span>操作</span>
-        <button
-          v-for="mode in interactionModes"
-          :key="mode.id"
-          :class="{ active: interactionMode === mode.id }"
-          @click="setInteractionMode(mode.id)"
-        >
-          <component :is="mode.icon" :size="15" />
-          {{ mode.label }}
-        </button>
-      </div>
-    </div>
-
-    <div class="workbench-grid">
-      <aside class="space-panel graph-left-panel">
-        <span>材料</span>
-        <input v-model="sourceFilter" placeholder="筛选材料" />
-        <div class="source-scroll">
-          <button
-            v-for="source in visibleSources"
-            :key="source.id"
-            class="source-row"
-            :class="{ selected: selectedSource?.id === source.id }"
-            @click="selectSource(source)"
-          >
-            <strong>{{ source.title }}</strong>
-            <small>{{ source.why_saved_status === 'user-stated' ? '用户原话' : 'AI 推断' }}</small>
-          </button>
-          <p v-if="!visibleSources.length">这个图谱还没有可显示的材料。</p>
-        </div>
-
-        <section v-if="themes.length" class="theme-list">
-          <span>主题分组</span>
-          <button
-            v-for="theme in themes"
-            :key="theme.id"
-            :class="{ selected: selectedThemeId === theme.id }"
-            @click="selectTheme(theme.id)"
-          >
-            <strong>{{ theme.label }}</strong>
-            <small>{{ theme.origin }} · {{ theme.status }}</small>
-          </button>
-        </section>
-
-        <section v-if="suggestions.length" class="route-suggestions">
-          <span>AI 路由建议</span>
-          <article v-for="suggestion in suggestions" :key="suggestion.id">
-            <small>{{ Math.round(suggestion.confidence * 100) }}%</small>
-            <p>{{ suggestion.reason }}</p>
-            <button class="paper-button" :disabled="busy" @click="$emit('acceptSuggestion', suggestion.id)">接受</button>
-            <button class="ghost-button" :disabled="busy" @click="$emit('rejectSuggestion', suggestion.id)">忽略</button>
-          </article>
-        </section>
-      </aside>
-
-      <article class="space-panel graph-canvas-panel" :class="{ 'is-expanded': graphExpanded }">
-        <div class="canvas-head">
-          <div>
-            <span>{{ currentViewLabel }}</span>
-            <p>{{ modeDescription }}</p>
+      <div class="graph-overview-grid">
+        <article class="space-panel graph-summary-card">
+          <div class="section-head compact">
+            <p class="section-kicker">空间摘要</p>
+            <h3>这个空间正在追踪什么</h3>
           </div>
-          <div class="canvas-actions">
-            <button class="paper-button" :disabled="!visibleGraphNodes.length" @click="toggleGraphExpanded">
-              <component :is="graphExpanded ? Minimize2 : Maximize2" :size="15" />
-              {{ graphExpanded ? '退出放大' : '放大图谱' }}
-            </button>
-            <button class="paper-button" :disabled="!visibleGraphNodes.length" @click="resetAutoLayout">
-              重新排布
-            </button>
-            <button class="paper-button" :disabled="!graph.nodes.length || savingLayout" @click="saveCurrentLayout">
-              保存布局
-            </button>
+          <p>{{ overviewSummary }}</p>
+          <div v-if="overviewProjects.length" class="graph-project-row">
+            <span v-for="project in overviewProjects" :key="project.project" class="graph-stat-chip">
+              {{ project.project }} · {{ project.source_count }} 条材料
+            </span>
           </div>
-        </div>
+        </article>
 
-        <div
-          v-if="visibleGraphNodes.length"
-          ref="stageContainer"
-          class="graph-stage"
-          @dblclick="toggleGraphExpanded"
-          @pointerdown="startGraphPan"
-          @wheel.prevent="zoomGraph"
-        >
-          <div class="graph-map-layer" :style="graphTransformStyle">
-            <svg class="graph-stage-edges" viewBox="0 0 1000 680" preserveAspectRatio="none" aria-hidden="true">
-              <defs>
-                <marker id="paper-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" />
-                </marker>
-              </defs>
-              <g>
-                <g
-                  v-for="edge in visibleGraphEdges"
-                  :key="edge.id"
-                  class="graph-edge-hit"
-                  :aria-label="`${labelFor(edge.source)} ${edge.relation} ${labelFor(edge.target)}`"
-                  @click="selectGraphEdge(edge.id)"
-                >
-                  <path :d="edgePath(edge)" class="paper-edge-touch" />
-                  <path
-                    :d="edgePath(edge)"
-                    class="paper-edge"
-                    :class="edgeClasses(edge)"
-                    marker-end="url(#paper-arrow)"
-                  />
-                </g>
-                <text
-                  v-for="edge in labeledGraphEdges"
-                  :key="`label-${edge.id}`"
-                  class="paper-edge-label"
-                  :x="edgeMidpoint(edge).x"
-                  :y="edgeMidpoint(edge).y"
-                >
-                  {{ edge.relation }}
-                </text>
-              </g>
-            </svg>
-            <button
-              v-for="node in visibleGraphNodes"
-              :key="node.id"
-              class="paper-graph-node"
-              :class="[
-                `node-${node.type}`,
-                `status-${node.status || 'confirmed'}`,
-                { selected: selectedNodeIds.includes(node.id) },
-              ]"
-              :style="nodePositionStyle(node.id)"
-              :title="node.label"
-              :aria-label="`${nodeTypeLabel(node.type)}：${node.label}`"
-              @click.stop="selectGraphNode(node.id, $event.shiftKey)"
-              @dblclick.stop="toggleGraphExpanded"
+        <article class="space-panel graph-summary-card">
+          <div class="section-head compact">
+            <p class="section-kicker">最近材料</p>
+            <h3>最近材料</h3>
+          </div>
+          <div v-if="overviewRecentSources.length" class="graph-overview-list">
+            <article
+              v-for="source in overviewRecentSources"
+              :key="source.id"
+              class="graph-recent-source-card"
             >
-              <span class="node-dot" aria-hidden="true" @pointerdown.stop="startNodeDrag($event, node.id)"></span>
-              <span class="node-label">{{ nodeMapLabel(node) }}</span>
-            </button>
+              <div class="graph-card-row">
+                <strong>{{ source.title }}</strong>
+                <span class="evidence-badge" :class="sourceToneClass(source)">
+                  {{ sourceBadgeLabel(source) }}
+                </span>
+              </div>
+              <p>{{ sourcePreview(source) }}</p>
+            </article>
           </div>
-          <div v-if="selectedNode" class="graph-stage-caption">
-            <small>{{ nodeTypeLabel(selectedNode.type) }}</small>
-            <strong>{{ shortLabel(selectedNode.label) }}</strong>
+          <p v-else class="subtle-empty-state">还没有最近材料。继续收集后，这里会先出现新的线索。</p>
+        </article>
+
+        <article class="space-panel graph-summary-card">
+          <div class="section-head compact">
+            <p class="section-kicker">关键节点</p>
+            <h3>关键节点</h3>
           </div>
-        </div>
-        <div v-else class="empty-canvas">
-          <strong>这个空间还没有节点</strong>
-          <p>先去“收集”放入材料，或者从 Inbox 接受一条路由建议。</p>
-        </div>
+          <div v-if="overviewKeyNodes.length" class="graph-overview-list">
+            <article
+              v-for="node in overviewKeyNodes"
+              :key="node.id"
+              class="graph-key-node-card"
+            >
+              <div class="graph-card-row">
+                <strong>{{ node.label }}</strong>
+                <span class="evidence-badge" :class="nodeToneClass(node)">
+                  {{ nodeTypeLabel(node.type) }}
+                </span>
+              </div>
+              <p>{{ keyNodeSummary(node) }}</p>
+            </article>
+          </div>
+          <p v-else class="subtle-empty-state">
+            还没有足够节点。继续收集材料后，SnapGraph 会逐步形成结构。
+          </p>
+        </article>
 
-        <section class="mode-guide">
-          <span>怎么用这一层</span>
-          <p>{{ interactionGuide }}</p>
-        </section>
+        <article class="space-panel graph-summary-card">
+          <div class="section-head compact">
+            <p class="section-kicker">开放问题 / 下一步</p>
+            <h3>开放问题 / 下一步</h3>
+          </div>
+          <div v-if="overviewOpenItems.length" class="graph-overview-list">
+            <article
+              v-for="item in overviewOpenItems"
+              :key="item.key"
+              class="open-loop-card"
+            >
+              <div class="graph-card-row">
+                <strong>{{ item.title }}</strong>
+                <span v-if="item.badge" class="evidence-badge" :class="item.tone">
+                  {{ item.badge }}
+                </span>
+              </div>
+              <p>{{ item.detail }}</p>
+            </article>
+          </div>
+          <p v-else class="subtle-empty-state">
+            暂时没有明确开放问题。你可以继续收集材料，或进入专业模式整理连接。
+          </p>
+        </article>
+      </div>
+    </section>
 
-        <div class="selection-strip">
-          <span>{{ selectionSummary }}</span>
-          <button class="ghost-button" :disabled="!selectedNodeIds.length" @click="clearSelection">清空选择</button>
-        </div>
-
-        <section v-if="interactionMode === 'connect'" class="operation-card">
-          <span>手动连边</span>
-          <p>选择两个节点，写下为什么它们应该被连起来。这个原因会记录进审计日志。</p>
-          <input v-model="edgeRelation" placeholder="关系，例如 supports / contradicts / clarifies" />
-          <textarea v-model="edgeReason" placeholder="为什么这两个节点有关？" />
-          <button class="primary-button" :disabled="busy || selectedNodeIds.length < 2 || !edgeReason.trim()" @click="createEdge">
-            确认连边
+    <section v-else class="graph-workbench">
+      <details class="space-editor">
+        <summary>编辑空间</summary>
+        <div>
+          <input v-model="editSpaceName" placeholder="空间名称" />
+          <input v-model="editSpacePurpose" placeholder="这个空间追什么问题？" />
+          <textarea v-model="editSpaceDescription" placeholder="补充描述，可选。" />
+          <label>
+            <small>颜色</small>
+            <input v-model="editSpaceColor" type="color" />
+          </label>
+          <button class="paper-button" :disabled="busy || !editSpaceName.trim()" @click="saveSpace">
+            保存空间
           </button>
-        </section>
+        </div>
+      </details>
 
-        <section v-if="interactionMode === 'synthesize'" class="operation-card">
-          <span>框选归纳</span>
-          <p>选择多个节点，把它们沉淀成一条用户判断，或者保存成主题分组。</p>
-          <input v-model="synthesisLabel" placeholder="判断或主题名称" />
-          <textarea v-model="synthesisReason" placeholder="为什么这些节点放在一起？" />
-          <textarea v-model="themeDescription" placeholder="主题描述，可选" />
-          <div>
-            <button class="primary-button" :disabled="busy || selectedNodeIds.length < 2 || !synthesisLabel.trim() || !synthesisReason.trim()" @click="createThought">
-              生成用户判断
-            </button>
-            <button class="paper-button" :disabled="busy || !selectedNodeIds.length || !synthesisLabel.trim()" @click="createTheme">
-              保存主题
-            </button>
-          </div>
-        </section>
-
-        <section v-if="interactionMode === 'prune'" class="operation-card">
-          <span>削弱 / 拒绝边</span>
-          <p>选择一条边，再给出原因。削弱、拒绝、隐藏都必须说明理由。</p>
-          <select v-model="pruneStatus">
-            <option value="confirmed">确认</option>
-            <option value="proposed">改为待确认</option>
-            <option value="weakened">削弱</option>
-            <option value="rejected">拒绝</option>
-            <option value="hidden">隐藏</option>
-          </select>
-          <textarea v-model="pruneReason" placeholder="为什么这样处理这条边？" />
-          <button class="primary-button" :disabled="busy || !selectedEdge || pruneNeedsReason" @click="updateEdgeStatus">
-            更新边状态
-          </button>
-        </section>
-      </article>
-
-      <aside class="space-panel graph-inspector">
-        <span>Inspector</span>
-        <template v-if="selectedTheme">
-          <strong>{{ selectedTheme.label }}</strong>
-          <p>{{ selectedTheme.description || selectedTheme.reason || '这个主题还没有说明。' }}</p>
-          <dl>
-            <div>
-              <dt>Origin</dt>
-              <dd>{{ selectedTheme.origin }}</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd>{{ selectedTheme.status }}</dd>
-            </div>
-            <div>
-              <dt>Members</dt>
-              <dd>{{ selectedTheme.member_node_ids.length }}</dd>
-            </div>
-          </dl>
-        </template>
-
-        <template v-else-if="selectedEdge">
-          <strong>{{ labelFor(selectedEdge.source) }} -> {{ selectedEdge.relation }} -> {{ labelFor(selectedEdge.target) }}</strong>
-          <p>{{ selectedEdge.explanation || selectedEdge.weakened_reason || selectedEdge.rejected_reason || '这条边还没有解释。' }}</p>
-          <dl>
-            <div>
-              <dt>Status</dt>
-              <dd>{{ selectedEdge.status || 'confirmed' }}</dd>
-            </div>
-            <div>
-              <dt>Origin</dt>
-              <dd>{{ selectedEdge.origin || 'AI-inferred' }}</dd>
-            </div>
-            <div>
-              <dt>Confidence</dt>
-              <dd>{{ Math.round((selectedEdge.confidence ?? 0) * 100) }}%</dd>
-            </div>
-          </dl>
-        </template>
-
-        <template v-else-if="selectedNode">
-          <strong>{{ selectedNode.label }}</strong>
-          <p>{{ nodeSummary(selectedNode) }}</p>
-          <dl>
-            <div>
-              <dt>Type</dt>
-              <dd>{{ selectedNode.type }}</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd>{{ selectedNode.status || 'confirmed' }}</dd>
-            </div>
-            <div v-if="sourceForSelectedNode">
-              <dt>Why</dt>
-              <dd>{{ sourceForSelectedNode.why_saved_status }}</dd>
-            </div>
-          </dl>
-          <div class="inspector-actions">
-            <button class="paper-button" :disabled="!sourceIdForSelectedNode" @click="openSource">
-              <ExternalLink :size="15" />
-              Open source
-            </button>
-            <button class="paper-button" @click="askFromHere">
-              <Search :size="15" />
-              Ask from here
+      <div class="graph-toolbar" aria-label="Graph workspace controls">
+        <div class="graph-toolbar-group">
+          <span>视图</span>
+          <div class="graph-toolbar-buttons">
+            <button
+              v-for="mode in viewModes"
+              :key="mode.id"
+              :class="{ active: viewMode === mode.id }"
+              @click="viewMode = mode.id"
+            >
+              <component :is="mode.icon" :size="15" />
+              {{ mode.label }}
             </button>
           </div>
-
-          <section v-if="sourceForSelectedNode" class="context-editor">
-            <span>认知上下文</span>
-            <label>
-              <small>保存理由</small>
-              <textarea v-model="editWhy" placeholder="这份材料当时为什么值得留下？" />
-            </label>
-            <label>
-              <small>相关项目 / 问题</small>
-              <input v-model="editProject" placeholder="例如：Thesis proposal" />
-            </label>
-            <label>
-              <small>未闭环事项</small>
-              <textarea v-model="editLoops" placeholder="每行一条" />
-            </label>
-            <button class="paper-button" :disabled="busy || !sourceForSelectedNode" @click="saveContext">
-              更新上下文
+          <p class="graph-view-caption">{{ modeDescription }}</p>
+        </div>
+        <div class="graph-toolbar-group">
+          <span>操作</span>
+          <div class="graph-toolbar-buttons">
+            <button
+              v-for="mode in interactionModes"
+              :key="mode.id"
+              :class="{ active: interactionMode === mode.id }"
+              @click="setInteractionMode(mode.id)"
+            >
+              <component :is="mode.icon" :size="15" />
+              {{ mode.label }}
             </button>
-            <label>
-              <small>移动到图谱</small>
-              <select v-model="moveTarget">
-                <option v-for="item in routableSpaces" :key="item.id" :value="item.id">{{ item.name }}</option>
-              </select>
-            </label>
-            <button class="paper-button" :disabled="busy || !moveTarget || moveTarget === sourceForSelectedNode.graph_space_id" @click="routeSelected">
-              移动材料
+          </div>
+        </div>
+      </div>
+
+      <div class="workbench-grid">
+        <aside class="space-panel graph-left-panel">
+          <span>材料</span>
+          <input v-model="sourceFilter" placeholder="筛选材料" />
+          <div class="source-scroll">
+            <button
+              v-for="source in visibleSources"
+              :key="source.id"
+              class="source-row"
+              :class="{ selected: selectedSource?.id === source.id }"
+              @click="selectSource(source)"
+            >
+              <strong>{{ source.title }}</strong>
+              <small>{{ source.why_saved_status === 'user-stated' ? '用户原话' : 'AI 推断' }}</small>
+            </button>
+            <p v-if="!visibleSources.length">这个图谱还没有可显示的材料。</p>
+          </div>
+
+          <section v-if="themes.length" class="theme-list">
+            <span>主题分组</span>
+            <button
+              v-for="theme in themes"
+              :key="theme.id"
+              :class="{ selected: selectedThemeId === theme.id }"
+              @click="selectTheme(theme.id)"
+            >
+              <strong>{{ theme.label }}</strong>
+              <small>{{ theme.origin }} · {{ theme.status }}</small>
             </button>
           </section>
-        </template>
 
-        <p v-else>选择一个节点、边或主题，查看证据与可审计操作。</p>
+          <section v-if="suggestions.length" class="route-suggestions">
+            <span>AI 路由建议</span>
+            <article v-for="suggestion in suggestions" :key="suggestion.id">
+              <small>{{ Math.round(suggestion.confidence * 100) }}%</small>
+              <p>{{ suggestion.reason }}</p>
+              <button class="paper-button" :disabled="busy" @click="$emit('acceptSuggestion', suggestion.id)">接受</button>
+              <button class="ghost-button" :disabled="busy" @click="$emit('rejectSuggestion', suggestion.id)">忽略</button>
+            </article>
+          </section>
+        </aside>
 
-        <section v-if="sourceDetailOpen" class="source-markdown">
-          <div>
-            <span>Source Markdown</span>
-            <button class="text-button" @click="sourceDetailOpen = false">收起</button>
+        <article class="space-panel graph-canvas-panel" :class="{ 'is-expanded': graphExpanded }">
+          <div class="canvas-head">
+            <div>
+              <span>{{ currentViewLabel }}</span>
+              <p>{{ modeDescription }}</p>
+            </div>
+            <div class="canvas-actions">
+              <button class="paper-button" :disabled="!visibleGraphNodes.length" @click="toggleGraphExpanded">
+                <component :is="graphExpanded ? Minimize2 : Maximize2" :size="15" />
+                {{ graphExpanded ? '退出放大' : '放大图谱' }}
+              </button>
+              <button class="paper-button" :disabled="!visibleGraphNodes.length" @click="resetAutoLayout">
+                重新排布
+              </button>
+              <button class="paper-button" :disabled="!graph.nodes.length || savingLayout" @click="saveCurrentLayout">
+                保存布局
+              </button>
+            </div>
           </div>
-          <pre>{{ sourceDetail?.markdown }}</pre>
-        </section>
 
-        <p v-if="localError" class="local-error">{{ localError }}</p>
-      </aside>
-    </div>
+          <div
+            v-if="visibleGraphNodes.length"
+            ref="stageContainer"
+            class="graph-stage"
+            @dblclick="toggleGraphExpanded"
+            @pointerdown="startGraphPan"
+            @wheel.prevent="zoomGraph"
+          >
+            <div class="graph-map-layer" :style="graphTransformStyle">
+              <svg class="graph-stage-edges" viewBox="0 0 1000 680" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <marker id="paper-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" />
+                  </marker>
+                </defs>
+                <g>
+                  <g
+                    v-for="edge in visibleGraphEdges"
+                    :key="edge.id"
+                    class="graph-edge-hit"
+                    :aria-label="`${labelFor(edge.source)} ${edge.relation} ${labelFor(edge.target)}`"
+                    @click="selectGraphEdge(edge.id)"
+                  >
+                    <path :d="edgePath(edge)" class="paper-edge-touch" />
+                    <path
+                      :d="edgePath(edge)"
+                      class="paper-edge"
+                      :class="edgeClasses(edge)"
+                      marker-end="url(#paper-arrow)"
+                    />
+                  </g>
+                  <text
+                    v-for="edge in labeledGraphEdges"
+                    :key="`label-${edge.id}`"
+                    class="paper-edge-label"
+                    :x="edgeMidpoint(edge).x"
+                    :y="edgeMidpoint(edge).y"
+                  >
+                    {{ edge.relation }}
+                  </text>
+                </g>
+              </svg>
+              <button
+                v-for="node in visibleGraphNodes"
+                :key="node.id"
+                class="paper-graph-node"
+                :class="[
+                  `node-${node.type}`,
+                  `status-${node.status || 'confirmed'}`,
+                  { selected: selectedNodeIds.includes(node.id) },
+                ]"
+                :style="nodePositionStyle(node.id)"
+                :title="node.label"
+                :aria-label="`${nodeTypeLabel(node.type)}：${node.label}`"
+                @click.stop="selectGraphNode(node.id, $event.shiftKey)"
+                @dblclick.stop="toggleGraphExpanded"
+              >
+                <span class="node-dot" aria-hidden="true" @pointerdown.stop="startNodeDrag($event, node.id)"></span>
+                <span class="node-label">{{ nodeMapLabel(node) }}</span>
+              </button>
+            </div>
+            <div v-if="selectedNode" class="graph-stage-caption">
+              <small>{{ nodeTypeLabel(selectedNode.type) }}</small>
+              <strong>{{ shortLabel(selectedNode.label) }}</strong>
+            </div>
+          </div>
+          <div v-else class="empty-canvas">
+            <strong>这个空间还没有节点</strong>
+            <p>先去“收集”放入材料，或者从 Inbox 接受一条路由建议。</p>
+          </div>
+
+          <section class="mode-guide">
+            <span>怎么用这一层</span>
+            <p>{{ interactionGuide }}</p>
+          </section>
+
+          <div class="selection-strip">
+            <span>{{ selectionSummary }}</span>
+            <button class="ghost-button" :disabled="!selectedNodeIds.length" @click="clearSelection">清空选择</button>
+          </div>
+
+          <section v-if="interactionMode === 'connect'" class="operation-card">
+            <span>手动连边</span>
+            <p>选择两个节点，写下为什么它们应该被连起来。这个原因会记录进审计日志。</p>
+            <input v-model="edgeRelation" placeholder="关系，例如 supports / contradicts / clarifies" />
+            <textarea v-model="edgeReason" placeholder="为什么这两个节点有关？" />
+            <button class="primary-button" :disabled="busy || selectedNodeIds.length < 2 || !edgeReason.trim()" @click="createEdge">
+              确认连边
+            </button>
+          </section>
+
+          <section v-if="interactionMode === 'synthesize'" class="operation-card">
+            <span>框选归纳</span>
+            <p>选择多个节点，把它们沉淀成一条用户判断，或者保存成主题分组。</p>
+            <input v-model="synthesisLabel" placeholder="判断或主题名称" />
+            <textarea v-model="synthesisReason" placeholder="为什么这些节点放在一起？" />
+            <textarea v-model="themeDescription" placeholder="主题描述，可选" />
+            <div>
+              <button class="primary-button" :disabled="busy || selectedNodeIds.length < 2 || !synthesisLabel.trim() || !synthesisReason.trim()" @click="createThought">
+                生成用户判断
+              </button>
+              <button class="paper-button" :disabled="busy || !selectedNodeIds.length || !synthesisLabel.trim()" @click="createTheme">
+                保存主题
+              </button>
+            </div>
+          </section>
+
+          <section v-if="interactionMode === 'prune'" class="operation-card">
+            <span>削弱 / 拒绝边</span>
+            <p>选择一条边，再给出原因。削弱、拒绝、隐藏都必须说明理由。</p>
+            <select v-model="pruneStatus">
+              <option value="confirmed">确认</option>
+              <option value="proposed">改为待确认</option>
+              <option value="weakened">削弱</option>
+              <option value="rejected">拒绝</option>
+              <option value="hidden">隐藏</option>
+            </select>
+            <textarea v-model="pruneReason" placeholder="为什么这样处理这条边？" />
+            <button class="primary-button" :disabled="busy || !selectedEdge || pruneNeedsReason" @click="updateEdgeStatus">
+              更新边状态
+            </button>
+          </section>
+        </article>
+
+        <aside class="space-panel graph-inspector">
+          <span>Inspector</span>
+          <template v-if="selectedTheme">
+            <strong>{{ selectedTheme.label }}</strong>
+            <p>{{ selectedTheme.description || selectedTheme.reason || '这个主题还没有说明。' }}</p>
+            <dl>
+              <div>
+                <dt>Origin</dt>
+                <dd>{{ selectedTheme.origin }}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{{ selectedTheme.status }}</dd>
+              </div>
+              <div>
+                <dt>Members</dt>
+                <dd>{{ selectedTheme.member_node_ids.length }}</dd>
+              </div>
+            </dl>
+          </template>
+
+          <template v-else-if="selectedEdge">
+            <strong>{{ labelFor(selectedEdge.source) }} -> {{ selectedEdge.relation }} -> {{ labelFor(selectedEdge.target) }}</strong>
+            <p>{{ selectedEdge.explanation || selectedEdge.weakened_reason || selectedEdge.rejected_reason || '这条边还没有解释。' }}</p>
+            <dl>
+              <div>
+                <dt>Status</dt>
+                <dd>{{ selectedEdge.status || 'confirmed' }}</dd>
+              </div>
+              <div>
+                <dt>Origin</dt>
+                <dd>{{ selectedEdge.origin || 'AI-inferred' }}</dd>
+              </div>
+              <div>
+                <dt>Confidence</dt>
+                <dd>{{ Math.round((selectedEdge.confidence ?? 0) * 100) }}%</dd>
+              </div>
+            </dl>
+          </template>
+
+          <template v-else-if="selectedNode">
+            <strong>{{ selectedNode.label }}</strong>
+            <p>{{ nodeSummary(selectedNode) }}</p>
+            <dl>
+              <div>
+                <dt>Type</dt>
+                <dd>{{ selectedNode.type }}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{{ selectedNode.status || 'confirmed' }}</dd>
+              </div>
+              <div v-if="sourceForSelectedNode">
+                <dt>Why</dt>
+                <dd>{{ sourceForSelectedNode.why_saved_status }}</dd>
+              </div>
+            </dl>
+            <div class="inspector-actions">
+              <button class="paper-button" :disabled="!sourceIdForSelectedNode" @click="openSource">
+                <ExternalLink :size="15" />
+                打开来源
+              </button>
+              <button class="paper-button" @click="askFromHere">
+                <Search :size="15" />
+                从这里追问
+              </button>
+            </div>
+
+            <section v-if="sourceForSelectedNode" class="context-editor">
+              <span>认知上下文</span>
+              <label>
+                <small>保存理由</small>
+                <textarea v-model="editWhy" placeholder="这份材料当时为什么值得留下？" />
+              </label>
+              <label>
+                <small>相关项目 / 问题</small>
+                <input v-model="editProject" placeholder="例如：Thesis proposal" />
+              </label>
+              <label>
+                <small>未闭环事项</small>
+                <textarea v-model="editLoops" placeholder="每行一条" />
+              </label>
+              <button class="paper-button" :disabled="busy || !sourceForSelectedNode" @click="saveContext">
+                更新上下文
+              </button>
+              <label>
+                <small>移动到图谱</small>
+                <select v-model="moveTarget">
+                  <option v-for="item in routableSpaces" :key="item.id" :value="item.id">{{ item.name }}</option>
+                </select>
+              </label>
+              <button class="paper-button" :disabled="busy || !moveTarget || moveTarget === sourceForSelectedNode.graph_space_id" @click="routeSelected">
+                移动材料
+              </button>
+            </section>
+          </template>
+
+          <div v-else class="graph-empty-inspector">
+            <p>选择一个材料或节点，查看它为什么被保存、和哪些问题相连。</p>
+          </div>
+
+          <section v-if="sourceDetailOpen" class="source-markdown">
+            <div>
+              <span>Source Markdown</span>
+              <button class="text-button" @click="sourceDetailOpen = false">收起</button>
+            </div>
+            <pre>{{ sourceDetail?.markdown }}</pre>
+          </section>
+
+          <p v-if="localError" class="local-error">{{ localError }}</p>
+        </aside>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -374,15 +503,28 @@ import type {
   ContextUpdatePayload,
   GraphEdge,
   GraphInteractionMode,
+  GraphInsights,
   GraphLayoutPosition,
   GraphNode,
+  GraphOpenLoopHotspot,
   GraphPayload,
+  GraphProjectCluster,
+  GraphReviewPath,
   GraphSpace,
   GraphTheme,
   GraphViewMode,
   Source,
   Suggestion,
 } from '../types'
+
+type GraphSurfaceMode = 'overview' | 'workbench'
+type OverviewOpenItem = {
+  key: string
+  title: string
+  detail: string
+  badge?: string
+  tone?: string
+}
 
 const props = defineProps<{
   busy: boolean
@@ -418,6 +560,7 @@ const interactionModes = [
 
 const stageContainer = ref<HTMLDivElement | null>(null)
 
+const surfaceMode = ref<GraphSurfaceMode>('overview')
 const viewMode = ref<GraphViewMode>('memory')
 const interactionMode = ref<GraphInteractionMode>('arrange')
 const layoutPositions = ref<GraphLayoutPosition[]>([])
@@ -463,6 +606,18 @@ const editSpaceColor = ref('#315f9f')
 
 const graphSpaceId = computed(() => props.space?.id || 'all')
 const routableSpaces = computed(() => props.spaces.filter((space) => space.status === 'active' && space.id !== 'inbox'))
+const insights = computed<GraphInsights>(() => props.graph.insights || {})
+const projectClusters = computed<GraphProjectCluster[]>(() => insights.value.project_clusters || [])
+const openLoopHotspots = computed<GraphOpenLoopHotspot[]>(() => insights.value.open_loop_hotspots || [])
+const reviewPaths = computed<GraphReviewPath[]>(() => insights.value.high_value_review_paths || [])
+const adjacencyCount = computed(() => {
+  const counts = new Map<string, number>()
+  for (const edge of props.graph.edges) {
+    counts.set(edge.source, (counts.get(edge.source) || 0) + 1)
+    counts.set(edge.target, (counts.get(edge.target) || 0) + 1)
+  }
+  return counts
+})
 const visibleSources = computed(() => {
   const query = sourceFilter.value.trim().toLowerCase()
   if (!query) return props.sources
@@ -538,13 +693,90 @@ const sourceForSelectedNode = computed(() => {
   if (!sourceIdForSelectedNode.value) return null
   return props.sources.find((source) => source.id === sourceIdForSelectedNode.value) || null
 })
+const overviewProjects = computed(() => projectClusters.value.slice(0, 3))
+const overviewRecentSources = computed(() => {
+  return [...props.sources]
+    .sort((left, right) => Date.parse(right.imported_at || '') - Date.parse(left.imported_at || ''))
+    .slice(0, 4)
+})
+const overviewKeyNodes = computed(() => {
+  const preferredTypes = ['project', 'thought', 'task', 'question']
+  const importantNodes = props.graph.nodes
+    .filter((node) => preferredTypes.includes(node.type))
+    .sort((left, right) => {
+      const typeDelta = preferredTypes.indexOf(left.type) - preferredTypes.indexOf(right.type)
+      if (typeDelta) return typeDelta
+      return (adjacencyCount.value.get(right.id) || 0) - (adjacencyCount.value.get(left.id) || 0)
+    })
+  const fallbackNodes = props.graph.nodes
+    .filter((node) => !importantNodes.find((item) => item.id === node.id))
+    .sort((left, right) => (adjacencyCount.value.get(right.id) || 0) - (adjacencyCount.value.get(left.id) || 0))
+  return [...importantNodes, ...fallbackNodes].slice(0, 5)
+})
+const overviewOpenItems = computed<OverviewOpenItem[]>(() => {
+  const hotspotItems = openLoopHotspots.value.slice(0, 4).map((item) => ({
+    key: `hotspot:${item.open_loop}`,
+    title: item.open_loop,
+    detail: item.count > 1 ? `来自 ${item.count} 条材料的开放问题。` : `来自 ${item.sources[0]?.title || '当前材料'} 的开放问题。`,
+    badge: item.sources[0]?.status === 'user-stated' ? 'user-stated / 用户原话' : 'AI-inferred / AI 推断',
+    tone: item.sources[0]?.status === 'user-stated' ? 'tone-user' : 'tone-ai',
+  }))
+  const suggestionItems = props.suggestions.slice(0, 3).map((suggestion) => ({
+    key: `suggestion:${suggestion.id}`,
+    title: suggestion.reason,
+    detail: `${Math.round(suggestion.confidence * 100)}% 置信度，等待你确认是否采纳。`,
+    badge: 'graph-path / 图谱建议',
+    tone: 'tone-graph',
+  }))
+  const pathItems = reviewPaths.value.slice(0, 2).map((item) => ({
+    key: `path:${item.source_id}:${item.path}`,
+    title: item.title,
+    detail: item.why || '这条路径提示了一个值得继续追问的判断连接。',
+    badge: item.status === 'user-stated' ? 'user-stated / 用户原话' : 'AI-inferred / AI 推断',
+    tone: item.status === 'user-stated' ? 'tone-user' : 'tone-ai',
+  }))
+  return [...hotspotItems, ...suggestionItems, ...pathItems].slice(0, 6)
+})
+const overviewOpenCount = computed(() => {
+  if (openLoopHotspots.value.length) return openLoopHotspots.value.length
+  if (props.suggestions.length) return props.suggestions.length
+  if (reviewPaths.value.length) return reviewPaths.value.length
+  return props.sources.reduce((total, source) => total + (source.open_loops?.length || 0), 0)
+})
+const overviewOpenLabel = computed(() => {
+  return props.suggestions.length ? '建议' : '开放问题'
+})
+const spaceDescription = computed(() => {
+  if (props.space?.id === 'inbox') {
+    return '新材料会先放在这里，等待确认和整理。'
+  }
+  if (props.space?.id === 'default') {
+    return '默认记忆空间，保存当前 SnapGraph 工作流的主要材料、判断和开放问题。'
+  }
+  return props.space?.purpose || props.space?.description || '这个空间保存了相关材料、想法和连接，用来帮助之后找回判断。'
+})
+const overviewSummary = computed(() => {
+  const projectList = overviewProjects.value.map((item) => item.project).filter(Boolean)
+  if (projectList.length) {
+    const lead = projectList.slice(0, 2).join('、')
+    const openCount = overviewOpenCount.value
+    if (openCount) {
+      return `这个空间现在主要围绕 ${lead} 这些主题组织材料，并把 ${openCount} 个待继续处理的问题保留下来，方便之后找回判断。`
+    }
+    return `这个空间现在主要围绕 ${lead} 这些主题组织材料，把来源、想法和连接整理成可回看的判断脉络。`
+  }
+  if (props.sources.length || props.graph.nodes.length) {
+    return '这个空间保存了相关材料、想法和连接，用来帮助之后找回判断。'
+  }
+  return '这个空间保存了相关材料、想法和连接，用来帮助之后找回判断。'
+})
 const pruneNeedsReason = computed(() => {
   return ['rejected', 'weakened', 'hidden'].includes(pruneStatus.value) && !pruneReason.value.trim()
 })
 const currentViewLabel = computed(() => viewModes.find((mode) => mode.id === viewMode.value)?.label || 'Memory Map')
 const modeDescription = computed(() => {
-  if (viewMode.value === 'evidence') return '强调证据路径、用户原话和材料如何支撑判断。'
-  if (viewMode.value === 'action') return '把未闭环事项、任务节点和后续行动提到前景。'
+  if (viewMode.value === 'evidence') return '查看某个回答或判断背后的证据路径。'
+  if (viewMode.value === 'action') return '查看开放问题、下一步和待处理连接。'
   return '查看这个空间里材料、想法和项目之间的整体结构。'
 })
 const selectionSummary = computed(() => {
@@ -563,7 +795,7 @@ const interactionGuide = computed(() => {
   if (interactionMode.value === 'prune') {
     return '点击一条边，确认、削弱或拒绝它。削弱/拒绝/隐藏都必须写原因，方便以后追溯。'
   }
-  return '默认只展示当前材料附近的证据路径。点圆点看细节，双击画布放大；想继续追问，点右侧 Ask from here。'
+  return '默认只展示当前材料附近的证据路径。点圆点看细节，双击画布放大；想继续追问，点右侧“从这里追问”。'
 })
 
 watch(() => props.space, (space) => {
@@ -571,6 +803,11 @@ watch(() => props.space, (space) => {
   editSpacePurpose.value = space?.purpose || ''
   editSpaceDescription.value = space?.description || ''
   editSpaceColor.value = space?.color || '#315f9f'
+  surfaceMode.value = 'overview'
+  selectedSource.value = null
+  selectedNodeIds.value = []
+  selectedEdgeId.value = ''
+  selectedThemeId.value = ''
   graphExpanded.value = false
   graphFocusNodeId.value = ''
   resetGraphView()
@@ -595,17 +832,18 @@ watch(sourceForSelectedNode, (source) => {
 watch(() => props.sources, (sources) => {
   if (!sources.length) {
     selectedSource.value = null
+    selectedNodeIds.value = []
+    graphFocusNodeId.value = ''
     return
   }
   if (!selectedSource.value) {
-    selectedSource.value = sources[0]
     graphFocusNodeId.value = `source_${sources[0].id}`
-    selectedNodeIds.value = [graphFocusNodeId.value]
+    selectedNodeIds.value = []
     return
   }
-  selectedSource.value = sources.find((source) => source.id === selectedSource.value?.id) || sources[0]
+  selectedSource.value = sources.find((source) => source.id === selectedSource.value?.id) || null
   if (!graphFocusNodeId.value) {
-    graphFocusNodeId.value = `source_${selectedSource.value.id}`
+    graphFocusNodeId.value = `source_${selectedSource.value?.id || sources[0].id}`
   }
 }, { immediate: true })
 
@@ -703,6 +941,7 @@ function clearSelection() {
   selectedNodeIds.value = []
   selectedEdgeId.value = ''
   selectedThemeId.value = ''
+  selectedSource.value = null
 }
 
 function setInteractionMode(mode: GraphInteractionMode) {
@@ -841,6 +1080,62 @@ function saveSpace() {
     description: editSpaceDescription.value.trim(),
     color: editSpaceColor.value,
   })
+}
+
+function askFromSpace() {
+  emit('askFromGraph', '这个空间最近在追踪什么问题？')
+}
+
+function openActionWorkbench() {
+  surfaceMode.value = 'workbench'
+  viewMode.value = 'action'
+  interactionMode.value = 'arrange'
+  clearSelection()
+}
+
+function sourceToneClass(source: Source) {
+  if (source.why_saved_status === 'user-stated') return 'tone-user'
+  if (source.why_saved_status === 'AI-inferred') return 'tone-ai'
+  return 'tone-source'
+}
+
+function sourceBadgeLabel(source: Source) {
+  if (source.why_saved_status === 'user-stated') return 'user-stated / 用户原话'
+  if (source.why_saved_status === 'AI-inferred') return 'AI-inferred / AI 推断'
+  return 'source / 材料'
+}
+
+function nodeToneClass(node: GraphNode) {
+  if (node.type === 'task') return 'tone-ai'
+  if (node.type === 'project' || node.type === 'question') return 'tone-graph'
+  return 'tone-source'
+}
+
+function sourcePreview(source: Source) {
+  const why = cleanOverviewText(source.why_saved)
+  if (why) return why
+  const summary = cleanOverviewText(source.summary)
+  if (summary) return summary
+  return '这条材料已经进入图谱，等待之后继续连接。'
+}
+
+function keyNodeSummary(node: GraphNode) {
+  const source = props.sources.find((item) => item.id === sourceIdForNode(node))
+  if (source) return sourcePreview(source)
+  const connections = adjacencyCount.value.get(node.id) || 0
+  if (node.type === 'task') return connections ? `目前连着 ${connections} 条路径，适合作为下一步整理入口。` : '这是一个待继续处理的开放问题。'
+  if (node.type === 'project') return connections ? `目前与 ${connections} 条连接相关，帮助你理解这个空间在围绕什么生长。` : '这个项目节点正在等待更多材料连接过来。'
+  if (node.type === 'thought') return connections ? `目前连着 ${connections} 条连接，用来承接已经形成的判断。` : '这个判断节点已经形成，但还需要更多连接支撑。'
+  return connections ? `目前连着 ${connections} 条路径。` : '这个节点还在等待更多材料补全。'
+}
+
+function cleanOverviewText(text: string) {
+  if (!text) return ''
+  return text
+    .replace(/^AI-inferred:\s*/i, '')
+    .replace(/^user-stated:\s*/i, '')
+    .replace(/^ai_inferred:\s*/i, '')
+    .trim()
 }
 
 function sourceIdForNode(node: GraphNode) {

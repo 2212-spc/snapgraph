@@ -25,6 +25,8 @@ export type GraphSpace = {
   node_count: number
   edge_count: number
   pending_suggestions: number
+  created_at?: string
+  updated_at?: string
 }
 
 export type Source = {
@@ -41,8 +43,10 @@ export type Source = {
   original_filename: string
   graph_space_id: string
   space_name: string
+  confidence?: number
   routing_status?: string
   routing_reason?: string
+  path?: string
 }
 
 export type EvidenceCard = {
@@ -141,7 +145,59 @@ export type GraphPayload = {
   }>
   node_count?: number
   edge_count?: number
-  insights?: Record<string, unknown>
+  insights?: GraphInsights
+}
+
+export type GraphProjectCluster = {
+  project: string
+  source_count: number
+  user_stated: number
+  ai_inferred: number
+  average_confidence: number
+  sources: Array<{
+    source_id: string
+    title: string
+    status: string
+    why_saved?: string
+  }>
+  open_loops: string[]
+  future_questions: string[]
+}
+
+export type GraphOpenLoopHotspot = {
+  open_loop: string
+  count: number
+  sources: Array<{
+    source_id: string
+    title: string
+    status: string
+  }>
+}
+
+export type GraphReviewPath = {
+  source_id: string
+  title: string
+  path: string
+  status: string
+  confidence: number
+  why?: string
+}
+
+export type GraphLowConfidenceContext = {
+  source_id: string
+  title: string
+  status: string
+  confidence: number
+  why_saved: string
+}
+
+export type GraphInsights = {
+  project_clusters?: GraphProjectCluster[]
+  bridge_sources?: Array<Record<string, unknown>>
+  open_loop_hotspots?: GraphOpenLoopHotspot[]
+  low_confidence_contexts?: GraphLowConfidenceContext[]
+  unassigned_sources?: Array<Record<string, unknown>>
+  high_value_review_paths?: GraphReviewPath[]
 }
 
 export type GraphNode = GraphPayload['nodes'][number]
