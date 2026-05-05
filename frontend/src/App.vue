@@ -36,6 +36,7 @@
         :busy-stage="busyStage"
         :result="askResult"
         :focus-graph="focusGraph"
+        :stages="recallStages"
         @recall="runRecall"
       />
 
@@ -54,6 +55,8 @@
         @update-context="updateContext"
         @accept-suggestion="acceptSuggestion"
         @reject-suggestion="rejectSuggestion"
+        @graph-changed="refreshSelectedGraph"
+        @ask-from-graph="askFromGraph"
       />
 
       <CollectView
@@ -125,6 +128,7 @@ import type {
   GraphSpace,
   IngestResponse,
   ProviderConfig,
+  RecallStage,
   Source,
   Suggestion,
   WorkspaceState,
@@ -152,6 +156,7 @@ const spaceGraph = ref<GraphPayload>({ nodes: [], edges: [] })
 const spaceSuggestions = ref<Suggestion[]>([])
 const focusGraph = ref<FocusGraph | null>(null)
 const askResult = ref<AskResponse | null>(null)
+const recallStages = ref<RecallStage[]>([])
 const collectResults = ref<IngestResponse[]>([])
 const settingsOpen = ref(false)
 const toast = ref('')
@@ -221,31 +226,137 @@ async function loadSpaceDetail(spaceId: string) {
   }
 }
 
+async function refreshSelectedGraph() {
+  if (selectedSpaceId.value !== 'all') {
+    await loadSpaceDetail(selectedSpaceId.value)
+  }
+  await loadWorkspace()
+  await loadSpaces()
+}
+
+async function askFromGraph(question: string) {
+  activeView.value = 'recall'
+  await runRecall(question)
+}
+
 async function runRecall(question: string) {
   busy.value = true
   askResult.value = null
   focusGraph.value = null
+  recallStages.value = [
+    { id: 'evidence', label: '找本地证据', status: 'active', detail: '先从本地图谱里找回线索' },
+    { id: 'read', label: '读用户原话', status: 'pending' },
+    { id: 'connect', label: '检查图谱连接', status: 'pending' },
+    { id: 'write', label: '生成 AI 回复', status: 'pending' },
+  ]
   busyStage.value = '先找本地证据。'
   try {
     focusGraph.value = await api<FocusGraph>('/api/focus', {
       method: 'POST',
       body: JSON.stringify({ question, space_id: 'all' }),
     })
+    updateRecallStage({ id: 'evidence', label: '找本地证据', status: 'done', detail: `找到 ${focusGraph.value.evidence_cards.length} 条线索` })
   } catch (error) {
+    updateRecallStage({ id: 'evidence', label: '找本地证据', status: 'error', detail: '本地证据检索失败' })
     showToast(`本地证据检索失败：${messageFromError(error)}`, 'error')
   }
 
-  busyStage.value = '再生成解释。'
+  busyStage.value = 'Qwen 正在组织回答。'
   try {
-    askResult.value = await api<AskResponse>('/api/ask', {
-      method: 'POST',
-      body: JSON.stringify({ question, space_id: 'all', save: false }),
-    })
+    await streamRecall(question)
   } catch (error) {
-    showToast(`解释生成失败，已保留本地证据：${messageFromError(error)}`, 'error')
+    showToast(`解释生成暂时不可用，已保留本地证据。${friendlyProviderHint(error)}`, 'error')
   } finally {
     busy.value = false
     busyStage.value = ''
+  }
+}
+
+async function streamRecall(question: string) {
+  const response = await fetch('/api/ask/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, space_id: 'all', save: false }),
+  })
+  if (!response.ok || !response.body) {
+    throw new Error(await response.text() || `HTTP ${response.status}`)
+  }
+  const decoder = new TextDecoder()
+  const reader = response.body.getReader()
+  let buffer = ''
+  let streamedText = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (value) {
+      buffer += decoder.decode(value, { stream: !done })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() || ''
+      for (const part of parts) handleStreamEvent(part, (chunk) => {
+        streamedText += chunk
+        askResult.value = partialAskResponse(question, streamedText)
+      })
+    }
+    if (done) break
+  }
+}
+
+function handleStreamEvent(raw: string, onChunk: (chunk: string) => void) {
+  const eventLine = raw.split('\n').find((line) => line.startsWith('event:'))
+  const dataLines = raw.split('\n').filter((line) => line.startsWith('data:'))
+  if (!eventLine || !dataLines.length) return
+  const event = eventLine.replace(/^event:\s*/, '').trim()
+  const data = JSON.parse(dataLines.map((line) => line.replace(/^data:\s?/, '')).join('\n'))
+  if (event === 'stage') {
+    updateRecallStage(data as RecallStage)
+  } else if (event === 'focus') {
+    if (data.focus_graph) focusGraph.value = data.focus_graph as FocusGraph
+  } else if (event === 'chunk') {
+    onChunk(String(data.text || ''))
+  } else if (event === 'final') {
+    askResult.value = data as AskResponse
+    if (askResult.value.focus_graph) focusGraph.value = askResult.value.focus_graph
+    updateRecallStage({ id: 'write', label: '生成 AI 回复', status: 'done', detail: '回答已完成' })
+  } else if (event === 'error') {
+    throw new Error(String(data.message || 'Stream failed'))
+  }
+}
+
+function partialAskResponse(question: string, text: string): AskResponse {
+  return {
+    question,
+    text: `# 回答\n## AI 探索回应\n${text}`,
+    contexts: focusGraph.value?.evidence_cards || [],
+    graph_paths: [],
+    focus_graph: focusGraph.value || emptyFocusGraph(),
+  }
+}
+
+function emptyFocusGraph(): FocusGraph {
+  return {
+    nodes: [],
+    edges: [],
+    evidence_cards: [],
+    open_loops: [],
+    confidence_summary: {
+      source_count: 0,
+      user_stated: 0,
+      ai_inferred: 0,
+      confidence_label: 'none',
+    },
+  }
+}
+
+function updateRecallStage(stage: RecallStage) {
+  const current = recallStages.value
+  const index = current.findIndex((item) => item.id === stage.id)
+  if (index >= 0) {
+    recallStages.value = [
+      ...current.slice(0, index),
+      { ...current[index], ...stage },
+      ...current.slice(index + 1),
+    ]
+  } else {
+    recallStages.value = [...current, stage]
   }
 }
 
@@ -420,5 +531,13 @@ function showToast(message: string, kind: ToastKind = 'info') {
 
 function messageFromError(error: unknown) {
   return error instanceof Error ? error.message : String(error)
+}
+
+function friendlyProviderHint(error: unknown) {
+  const message = messageFromError(error)
+  if (message.includes('SNAPGRAPH_LLM_API_KEY') || message.includes('provider requires API key')) {
+    return '模型 API key 没有被当前服务进程读到。'
+  }
+  return ''
 }
 </script>

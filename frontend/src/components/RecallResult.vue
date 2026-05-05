@@ -1,7 +1,32 @@
 <template>
   <section class="recall-result">
     <div class="result-kicker">记忆找回</div>
-    <h2>{{ hasEvidence ? '找到了这些线索' : '还没有足够线索' }}</h2>
+    <h2>{{ resultTitle }}</h2>
+
+    <div v-if="stages.length" class="agent-trace" aria-label="AI response progress">
+      <div
+        v-for="stage in stages"
+        :key="stage.id"
+        class="agent-step"
+        :class="stage.status"
+      >
+        <i aria-hidden="true"></i>
+        <div>
+          <strong>{{ stage.label }}</strong>
+          <small>{{ stage.detail || stageLabel(stage.status) }}</small>
+        </div>
+      </div>
+    </div>
+
+    <article class="result-panel ai-answer wide">
+      <div class="panel-label">
+        <span>AI 回复</span>
+        <small>下面是依据</small>
+      </div>
+      <div class="ai-answer-body">
+        <p v-for="block in aiExplorationBlocks" :key="block">{{ block }}</p>
+      </div>
+    </article>
 
     <div class="result-grid">
       <article class="result-panel primary">
@@ -47,15 +72,25 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AskResponse, EvidenceCard, FocusGraph } from '../types'
+import type { AskResponse, EvidenceCard, FocusGraph, RecallStage } from '../types'
 
 const props = defineProps<{
   result: AskResponse | null
   focusGraph: FocusGraph | null
+  busy: boolean
+  stages: RecallStage[]
 }>()
 
 const materials = computed<EvidenceCard[]>(() => props.result?.contexts || props.focusGraph?.evidence_cards || [])
 const hasEvidence = computed(() => materials.value.length > 0)
+const aiExplorationText = computed(() => sectionText('## AI 探索回应') || fallbackAiExploration())
+const aiExplorationBlocks = computed(() => splitBlocks(aiExplorationText.value))
+const resultTitle = computed(() => {
+  if (props.busy && props.result) return 'AI 正在回答'
+  if (props.result) return hasEvidence.value ? '这是我的回答' : '还没有足够证据'
+  if (props.busy && hasEvidence.value) return '正在组织回答'
+  return hasEvidence.value ? '先浮出本地线索' : '还没有足够线索'
+})
 const originalLines = computed(() => {
   const fromAnswer = sectionLines('## 找回的原话')
   if (fromAnswer.length) return fromAnswer.slice(0, 3)
@@ -95,6 +130,25 @@ function fallbackInsight() {
   return `${userCount} 条材料带有用户原话。先沿这些原话继续追问，比从泛泛摘要开始更可靠。`
 }
 
+function fallbackAiExploration() {
+  if (!props.result && props.busy && materials.value.length) {
+    return '我已经先找到了相关线索，正在把它们整理成回答。下面的内容只是依据，还不是最终回复。'
+  }
+  if (!props.result && materials.value.length) {
+    return '模型回复暂时不可用。下面这些线索可以继续作为追问入口，但还不是完整回答。'
+  }
+  if (!materials.value.length) {
+    return '还没有足够证据支撑 AI 探索回应。换一个更接近旧材料、项目或判断的线索再问。'
+  }
+  const titles = materials.value.slice(0, 3).map((card) => card.title).join('、')
+  const userCount = materials.value.filter((card) => card.why_saved_status === 'user-stated').length
+  return (
+    `我找到了和这个问题相关的旧材料：${titles}。`
+    + `其中 ${userCount} 条带有你当时写下的原话。`
+    + '我会先用这些原话恢复当时的判断，再用其他材料补足证据和反例。'
+  )
+}
+
 function fallbackNext() {
   for (const card of materials.value) {
     const loop = card.open_loops.find((item) => item && item !== 'None')
@@ -117,5 +171,19 @@ function cleanText(markdown: string) {
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/^---+$/gm, '')
     .trim()
+}
+
+function splitBlocks(text: string) {
+  return text
+    .split(/\n{2,}|\n(?=[^\n]{24,})/)
+    .map((block) => block.replace(/^[-\d.]+\s*/, '').trim())
+    .filter(Boolean)
+}
+
+function stageLabel(status: RecallStage['status']) {
+  if (status === 'active') return '正在处理'
+  if (status === 'done') return '完成'
+  if (status === 'error') return '暂时失败'
+  return '等待中'
 }
 </script>

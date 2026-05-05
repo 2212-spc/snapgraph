@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from .models import (
     DEFAULT_GRAPH_SPACE_ID,
@@ -42,7 +43,7 @@ def replace_source_graph(
     graph["edges"] = [
         edge
         for edge in graph.get("edges", [])
-        if edge.get("evidence_source_id") != source.id
+        if not _is_auto_source_edge(edge, source.id)
     ]
     graph["nodes"] = _upsert_items(graph.get("nodes", []), nodes)
     graph["edges"] = _upsert_items(graph.get("edges", []), edges)
@@ -233,6 +234,388 @@ def save_graph(workspace: Workspace, graph: dict) -> None:
     )
 
 
+def load_graph_layout(workspace: Workspace, view_id: str) -> dict:
+    """Return saved positions for a graph view without changing graph facts."""
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT node_id, x, y, locked, graph_space_id, updated_at
+            FROM graph_layouts
+            WHERE view_id = ?
+            ORDER BY node_id ASC
+            """,
+            (view_id,),
+        ).fetchall()
+    return {
+        "view_id": view_id,
+        "positions": [
+            {
+                "node_id": row[0],
+                "x": float(row[1]),
+                "y": float(row[2]),
+                "locked": bool(row[3]),
+                "graph_space_id": row[4],
+                "updated_at": row[5],
+            }
+            for row in rows
+        ],
+    }
+
+
+def save_graph_layout(
+    workspace: Workspace,
+    *,
+    view_id: str,
+    graph_space_id: str,
+    positions: list[dict],
+) -> dict:
+    """Persist user-arranged node coordinates for a single graph view."""
+    now = _now()
+    saved = 0
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        for position in positions:
+            node_id = str(position.get("node_id", "")).strip()
+            if not node_id:
+                continue
+            conn.execute(
+                """
+                INSERT INTO graph_layouts (
+                    id, view_id, graph_space_id, node_id, x, y, locked,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(view_id, node_id) DO UPDATE SET
+                    graph_space_id = excluded.graph_space_id,
+                    x = excluded.x,
+                    y = excluded.y,
+                    locked = excluded.locked,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    _layout_id(view_id, node_id),
+                    view_id,
+                    graph_space_id,
+                    node_id,
+                    float(position.get("x", 0)),
+                    float(position.get("y", 0)),
+                    1 if bool(position.get("locked", False)) else 0,
+                    now,
+                    now,
+                ),
+            )
+            saved += 1
+    return {"view_id": view_id, "saved": saved}
+
+
+def create_manual_edge(
+    workspace: Workspace,
+    *,
+    source: str,
+    target: str,
+    relation: str,
+    reason: str,
+    graph_space_id: str,
+) -> dict:
+    """Create a user-confirmed graph edge and record its audit reason."""
+    source_id = source.strip()
+    target_id = target.strip()
+    relation_name = relation.strip() or "related_to"
+    reason_text = _compact_text(reason)
+    if not source_id or not target_id:
+        raise ValueError("source and target are required")
+    if source_id == target_id:
+        raise ValueError("source and target must be different")
+    if not reason_text:
+        raise ValueError("reason is required")
+
+    graph = load_graph(workspace)
+    node_ids = {node.get("id") for node in graph.get("nodes", [])}
+    if source_id not in node_ids or target_id not in node_ids:
+        raise KeyError("source or target node not found")
+
+    edge = {
+        "id": _edge_id(source_id, target_id, relation_name),
+        "source": source_id,
+        "target": target_id,
+        "relation": relation_name,
+        "evidence_source_id": _edge_evidence_source_id(graph, source_id, target_id),
+        "confidence": 1.0,
+        "graph_space_id": graph_space_id,
+        "status": "confirmed",
+        "evidence_kind": "manual",
+        "explanation": reason_text,
+        "origin": "user",
+    }
+    graph["edges"] = _upsert_dict_items(graph.get("edges", []), [edge])
+    save_graph(workspace, graph)
+    _save_sqlite_edge_dict(workspace, edge)
+    _record_graph_feedback(
+        workspace,
+        kind="connect",
+        graph_space_id=graph_space_id,
+        source_node_id=source_id,
+        target_node_id=target_id,
+        edge_id=edge["id"],
+        reason=reason_text,
+    )
+    return edge
+
+
+def update_graph_edge(
+    workspace: Workspace,
+    edge_id: str,
+    *,
+    status: str,
+    reason: str = "",
+) -> dict:
+    """Update an edge review status and store the user's audit reason."""
+    allowed_statuses = {"confirmed", "proposed", "rejected", "weakened", "hidden"}
+    status_value = status.strip()
+    reason_text = _compact_text(reason)
+    if status_value not in allowed_statuses:
+        raise ValueError(f"Unsupported edge status: {status}")
+    if status_value in {"rejected", "weakened", "hidden"} and not reason_text:
+        raise ValueError("reason is required for rejected, weakened, or hidden edges")
+
+    graph = load_graph(workspace)
+    for edge in graph.get("edges", []):
+        if edge.get("id") != edge_id:
+            continue
+        edge["status"] = status_value
+        if reason_text:
+            edge[f"{status_value}_reason"] = reason_text
+        save_graph(workspace, graph)
+        _save_sqlite_edge_dict(workspace, edge)
+        _record_graph_feedback(
+            workspace,
+            kind=status_value,
+            graph_space_id=edge.get("graph_space_id", DEFAULT_GRAPH_SPACE_ID),
+            source_node_id=edge.get("source"),
+            target_node_id=edge.get("target"),
+            edge_id=edge_id,
+            reason=reason_text,
+        )
+        return edge
+    raise KeyError(edge_id)
+
+
+def create_user_thought(
+    workspace: Workspace,
+    *,
+    graph_space_id: str,
+    node_ids: list[str],
+    label: str,
+    reason: str,
+) -> dict:
+    """Create a user-stated thought node that synthesizes selected nodes."""
+    selected_ids = sorted({node_id.strip() for node_id in node_ids if node_id.strip()})
+    label_text = _compact_text(label)
+    reason_text = _compact_text(reason)
+    if len(selected_ids) < 2:
+        raise ValueError("At least two nodes are required")
+    if not label_text:
+        raise ValueError("label is required")
+    if not reason_text:
+        raise ValueError("reason is required")
+
+    graph = load_graph(workspace)
+    existing_node_ids = {node.get("id") for node in graph.get("nodes", [])}
+    missing = [node_id for node_id in selected_ids if node_id not in existing_node_ids]
+    if missing:
+        raise KeyError(f"Unknown node ids: {', '.join(missing)}")
+
+    thought_node = GraphNode(
+        id=_user_thought_id(graph_space_id, label_text, selected_ids, reason_text),
+        type="thought",
+        label=label_text,
+        properties={
+            "trust_status": "user-stated",
+            "origin": "user",
+            "reason": reason_text,
+            "member_node_ids": selected_ids,
+            "confidence": 1.0,
+        },
+        graph_space_id=graph_space_id,
+        status="confirmed",
+    )
+    edges = [
+        {
+            "id": _edge_id(node_id, thought_node.id, "supports"),
+            "source": node_id,
+            "target": thought_node.id,
+            "relation": "supports",
+            "evidence_source_id": _node_source_id(graph, node_id),
+            "confidence": 1.0,
+            "graph_space_id": graph_space_id,
+            "status": "confirmed",
+            "evidence_kind": "user-stated",
+            "explanation": reason_text,
+            "origin": "user",
+        }
+        for node_id in selected_ids
+    ]
+    graph["nodes"] = _upsert_items(graph.get("nodes", []), [thought_node])
+    graph["edges"] = _upsert_dict_items(graph.get("edges", []), edges)
+    save_graph(workspace, graph)
+    _save_sqlite(workspace, [thought_node], [])
+    for edge in edges:
+        _save_sqlite_edge_dict(workspace, edge)
+    _record_graph_feedback(
+        workspace,
+        kind="synthesize",
+        graph_space_id=graph_space_id,
+        source_node_id=selected_ids[0],
+        target_node_id=thought_node.id,
+        edge_id=None,
+        reason=reason_text,
+    )
+    return {"thought_node": asdict(thought_node), "edges_created": len(edges)}
+
+
+def list_graph_themes(workspace: Workspace, space_id: str | None = None) -> list[dict]:
+    where = ""
+    params: list[str] = []
+    if space_id and space_id != "all":
+        where = "WHERE graph_space_id = ?"
+        params.append(space_id)
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT id, graph_space_id, label, description, member_node_ids_json,
+                   origin, status, confidence, reason, created_at, updated_at
+            FROM graph_themes
+            {where}
+            ORDER BY updated_at DESC, label ASC
+            """,
+            params,
+        ).fetchall()
+    return [_theme_from_row(row) for row in rows]
+
+
+def create_graph_theme(
+    workspace: Workspace,
+    *,
+    graph_space_id: str,
+    label: str,
+    member_node_ids: list[str],
+    reason: str = "",
+    description: str = "",
+    origin: str = "user",
+    status: str = "confirmed",
+    confidence: float = 1.0,
+) -> dict:
+    """Create a theme that groups graph nodes without rewriting graph facts."""
+    label_text = _compact_text(label)
+    members = sorted({node_id.strip() for node_id in member_node_ids if node_id.strip()})
+    origin_value = origin.strip() or "user"
+    status_value = status.strip() or "confirmed"
+    reason_text = _compact_text(reason)
+    if not label_text:
+        raise ValueError("label is required")
+    if not members:
+        raise ValueError("member_node_ids are required")
+    if origin_value not in {"user", "AI-inferred"}:
+        raise ValueError("origin must be user or AI-inferred")
+    if origin_value == "AI-inferred" and status_value != "proposed":
+        raise ValueError("AI-inferred themes must be proposed")
+
+    now = _now()
+    theme_id = _theme_id(graph_space_id, label_text, members)
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO graph_themes (
+                id, graph_space_id, label, description, member_node_ids_json,
+                origin, status, confidence, reason, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                label = excluded.label,
+                description = excluded.description,
+                member_node_ids_json = excluded.member_node_ids_json,
+                origin = excluded.origin,
+                status = excluded.status,
+                confidence = excluded.confidence,
+                reason = excluded.reason,
+                updated_at = excluded.updated_at
+            """,
+            (
+                theme_id,
+                graph_space_id,
+                label_text,
+                description.strip(),
+                json.dumps(members, ensure_ascii=False),
+                origin_value,
+                status_value,
+                float(confidence),
+                reason_text,
+                now,
+                now,
+            ),
+        )
+    if origin_value == "user":
+        _record_graph_feedback(
+            workspace,
+            kind="theme",
+            graph_space_id=graph_space_id,
+            source_node_id=members[0],
+            target_node_id=None,
+            edge_id=None,
+            reason=reason_text,
+        )
+    return next(
+        theme
+        for theme in list_graph_themes(workspace, graph_space_id)
+        if theme["id"] == theme_id
+    )
+
+
+def update_graph_theme(workspace: Workspace, theme_id: str, updates: dict) -> dict:
+    """Update theme review fields and keep the change auditable when reason is provided."""
+    allowed = {"label", "description", "origin", "status", "confidence", "reason"}
+    assignments = []
+    values: list[str | float] = []
+    for key in allowed:
+        if key in updates:
+            assignments.append(f"{key} = ?")
+            value = float(updates[key]) if key == "confidence" else str(updates[key]).strip()
+            values.append(value)
+    if "member_node_ids" in updates:
+        assignments.append("member_node_ids_json = ?")
+        members = [
+            str(node_id).strip()
+            for node_id in updates["member_node_ids"]
+            if str(node_id).strip()
+        ]
+        values.append(json.dumps(sorted(set(members)), ensure_ascii=False))
+    if not assignments:
+        themes = [theme for theme in list_graph_themes(workspace) if theme["id"] == theme_id]
+        if not themes:
+            raise KeyError(theme_id)
+        return themes[0]
+    assignments.append("updated_at = ?")
+    values.append(_now())
+    values.append(theme_id)
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        result = conn.execute(
+            f"UPDATE graph_themes SET {', '.join(assignments)} WHERE id = ?",
+            values,
+        )
+        if result.rowcount == 0:
+            raise KeyError(theme_id)
+    theme = next(theme for theme in list_graph_themes(workspace) if theme["id"] == theme_id)
+    reason_text = _compact_text(str(updates.get("reason", "")))
+    if reason_text:
+        _record_graph_feedback(
+            workspace,
+            kind=f"theme:{theme.get('status', 'updated')}",
+            graph_space_id=theme["graph_space_id"],
+            source_node_id=(theme["member_node_ids"] or [None])[0],
+            target_node_id=None,
+            edge_id=None,
+            reason=reason_text,
+        )
+    return theme
+
+
 def graph_diagnostics(workspace: Workspace) -> GraphDiagnostics:
     graph = load_graph(workspace)
     nodes = graph.get("nodes", [])
@@ -293,6 +676,13 @@ def _upsert_items(existing: list[dict], new_items: list[GraphNode] | list[GraphE
     return sorted(merged.values(), key=lambda item: item["id"])
 
 
+def _upsert_dict_items(existing: list[dict], new_items: list[dict]) -> list[dict]:
+    merged = {item["id"]: item for item in existing}
+    for item in new_items:
+        merged[item["id"]] = item
+    return sorted(merged.values(), key=lambda item: item["id"])
+
+
 def _save_sqlite(
     workspace: Workspace,
     nodes: list[GraphNode],
@@ -336,6 +726,28 @@ def _save_sqlite(
             )
 
 
+def _save_sqlite_edge_dict(workspace: Workspace, edge: dict) -> None:
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO edges (
+                id, source, target, relation, evidence_source_id, confidence,
+                graph_space_id, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                edge["id"],
+                edge["source"],
+                edge["target"],
+                edge["relation"],
+                edge.get("evidence_source_id"),
+                float(edge.get("confidence", 0)),
+                edge.get("graph_space_id", DEFAULT_GRAPH_SPACE_ID),
+                edge.get("status", "confirmed"),
+            ),
+        )
+
+
 def _rewrite_sqlite_graph(workspace: Workspace, graph: dict) -> None:
     with sqlite3.connect(workspace.sqlite_path) as conn:
         conn.execute("DELETE FROM nodes")
@@ -348,6 +760,98 @@ def _rewrite_sqlite_graph(workspace: Workspace, graph: dict) -> None:
 def _edge_id(source: str, target: str, relation: str) -> str:
     digest = hashlib.sha1(f"{source}|{target}|{relation}".encode("utf-8")).hexdigest()
     return f"edge_{digest[:12]}"
+
+
+def _layout_id(view_id: str, node_id: str) -> str:
+    digest = hashlib.sha1(f"{view_id}|{node_id}".encode("utf-8")).hexdigest()
+    return f"layout_{digest[:16]}"
+
+
+def _user_thought_id(
+    graph_space_id: str,
+    label: str,
+    node_ids: list[str],
+    reason: str,
+) -> str:
+    payload = f"{graph_space_id}|{label}|{'|'.join(node_ids)}|{reason}"
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return f"thought_user_{digest[:12]}"
+
+
+def _theme_id(graph_space_id: str, label: str, node_ids: list[str]) -> str:
+    payload = f"{graph_space_id}|{label}|{'|'.join(node_ids)}"
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return f"theme_{digest[:12]}"
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _compact_text(text: str) -> str:
+    return " ".join(text.strip().split())
+
+
+def _node_source_id(graph: dict, node_id: str) -> str | None:
+    for node in graph.get("nodes", []):
+        if node.get("id") == node_id:
+            value = node.get("properties", {}).get("source_id")
+            return str(value) if value else None
+    return None
+
+
+def _edge_evidence_source_id(graph: dict, source: str, target: str) -> str | None:
+    return _node_source_id(graph, source) or _node_source_id(graph, target)
+
+
+def _record_graph_feedback(
+    workspace: Workspace,
+    *,
+    kind: str,
+    graph_space_id: str,
+    source_node_id: str | None,
+    target_node_id: str | None,
+    edge_id: str | None,
+    reason: str,
+) -> None:
+    now = _now()
+    payload = f"{kind}|{graph_space_id}|{source_node_id}|{target_node_id}|{edge_id}|{reason}|{now}"
+    feedback_id = f"feedback_{hashlib.sha1(payload.encode('utf-8')).hexdigest()[:16]}"
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO graph_feedback (
+                id, kind, graph_space_id, source_node_id, target_node_id,
+                edge_id, reason, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                feedback_id,
+                kind,
+                graph_space_id,
+                source_node_id,
+                target_node_id,
+                edge_id,
+                reason,
+                now,
+            ),
+        )
+
+
+def _theme_from_row(row: tuple) -> dict:
+    return {
+        "id": row[0],
+        "graph_space_id": row[1],
+        "label": row[2],
+        "description": row[3],
+        "member_node_ids": _loads_list(row[4]),
+        "origin": row[5],
+        "status": row[6],
+        "confidence": float(row[7]),
+        "reason": row[8],
+        "created_at": row[9],
+        "updated_at": row[10],
+    }
 
 
 def _short_label(text: str) -> str:
@@ -672,6 +1176,19 @@ def _node_belongs_to_source(node: dict, source_id: str) -> bool:
         f"question_{source_id}_",
     )
     return str(node.get("id", "")).startswith(prefixes)
+
+
+def _is_auto_source_edge(edge: dict, source_id: str) -> bool:
+    if edge.get("evidence_source_id") != source_id:
+        return False
+    if edge.get("origin") == "user" or edge.get("evidence_kind") in {"manual", "user-stated"}:
+        return False
+    return edge.get("relation") in {
+        "triggered_thought",
+        "evidence_for",
+        "follow_up",
+        "belongs_to",
+    }
 
 
 def _prune_orphan_support_nodes(graph: dict) -> dict:

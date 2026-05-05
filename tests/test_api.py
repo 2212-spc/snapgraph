@@ -82,11 +82,31 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
         "## 找回的原话",
         "## 相关材料",
         "## 连接路径",
+        "## AI 探索回应",
         "## 涌现洞见",
         "## 下一步",
         "## 检索诊断",
     ]:
         assert heading in text
+
+
+def test_api_ask_stream_emits_agent_stages_and_final_answer(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    response = client.post(
+        "/api/ask/stream",
+        json={"question": "我为什么要从 LLM Wiki 开始？", "save": False},
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "event: stage" in body
+    assert '"id": "evidence"' in body
+    assert '"id": "write"' in body
+    assert "event: final" in body
+    assert "## AI 探索回应" in body
 
 
 def test_api_reports_provider_metadata(tmp_path: Path, monkeypatch) -> None:
@@ -153,7 +173,7 @@ def test_api_no_match_does_not_require_real_provider_key(tmp_path: Path, monkeyp
     assert response.json()["focus_graph"]["nodes"] == []
 
 
-def test_api_fails_fast_when_real_provider_key_is_missing_for_evidence(
+def test_api_keeps_local_evidence_when_real_provider_key_is_missing_for_evidence(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -169,11 +189,13 @@ def test_api_fails_fast_when_real_provider_key_is_missing_for_evidence(
     response = client.post("/api/ask", json={"question": "LLM Wiki"})
 
     assert config_response.status_code == 200
-    assert response.status_code == 503
-    detail = response.json()["detail"]
-    assert detail["configured_provider"] == "deepseek"
-    assert detail["provider_ready"] is False
-    assert detail["fallback_used"] is False
+    assert response.status_code == 200
+    payload = response.json()
+    assert "## 找回的原话" in payload["text"]
+    assert payload["contexts"]
+    assert payload["provider"]["configured_provider"] == "deepseek"
+    assert payload["provider"]["provider_ready"] is False
+    assert payload["provider"]["fallback_used"] is True
 
 
 def test_api_can_confirm_and_correct_context(tmp_path: Path, monkeypatch) -> None:
@@ -235,4 +257,38 @@ def test_api_ingest_falls_back_to_mock_when_provider_key_missing(tmp_path: Path,
     payload = response.json()
     assert payload["status"] == "user-stated"
     assert payload["provider"]["provider_used"] == "mock"
+    assert payload["provider"]["fallback_used"] is True
+
+
+def test_api_ask_falls_back_to_local_answer_when_provider_key_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SNAPGRAPH_LLM_API_KEY", raising=False)
+    client = TestClient(app)
+    config = client.put(
+        "/api/config",
+        json={
+            "provider": "qwen",
+            "model": "qwen3-vl-plus",
+            "api_key_env": "SNAPGRAPH_LLM_API_KEY",
+        },
+    )
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Screenshot note\n\nScreenshots are only capture inputs.\n", "text/markdown")},
+        data={"why": "Screenshots are not the core; recall is the core."},
+    )
+    answer = client.post(
+        "/api/ask",
+        json={"question": "我之前为什么觉得截图不是核心？", "space_id": "all"},
+    )
+
+    assert config.status_code == 200
+    assert upload.status_code == 200
+    assert answer.status_code == 200
+    payload = answer.json()
+    assert "## 找回的原话" in payload["text"]
+    assert "Screenshots are not the core" in payload["text"]
     assert payload["provider"]["fallback_used"] is True

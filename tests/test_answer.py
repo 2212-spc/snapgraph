@@ -25,6 +25,7 @@ def test_ask_recovers_llm_wiki_context_with_graph_paths(tmp_path: Path) -> None:
     assert "## 找回的原话" in answer.text
     assert "## 相关材料" in answer.text
     assert "## 连接路径" in answer.text
+    assert "## AI 探索回应" in answer.text
     assert "## 涌现洞见" in answer.text
     assert "## 下一步" in answer.text
     assert "## 检索诊断" in answer.text

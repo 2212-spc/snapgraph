@@ -48,6 +48,8 @@
         @update-context="(sourceId, payload) => $emit('updateContext', sourceId, payload)"
         @accept-suggestion="(suggestionId) => $emit('acceptSuggestion', suggestionId)"
         @reject-suggestion="(suggestionId) => $emit('rejectSuggestion', suggestionId)"
+        @graph-changed="$emit('graphChanged')"
+        @ask-from-graph="(question) => $emit('askFromGraph', question)"
       />
     </div>
   </section>
@@ -75,6 +77,8 @@ const emit = defineEmits<{
   updateContext: [sourceId: string, payload: ContextUpdatePayload]
   acceptSuggestion: [suggestionId: string]
   rejectSuggestion: [suggestionId: string]
+  graphChanged: []
+  askFromGraph: [question: string]
 }>()
 
 const name = ref('')

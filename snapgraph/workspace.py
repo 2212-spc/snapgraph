@@ -224,6 +224,53 @@ def initialize_database(workspace: Workspace) -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS graph_layouts (
+                id TEXT PRIMARY KEY,
+                view_id TEXT NOT NULL,
+                graph_space_id TEXT NOT NULL,
+                node_id TEXT NOT NULL,
+                x REAL NOT NULL,
+                y REAL NOT NULL,
+                locked INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(view_id, node_id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS graph_feedback (
+                id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                graph_space_id TEXT NOT NULL,
+                source_node_id TEXT,
+                target_node_id TEXT,
+                edge_id TEXT,
+                reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS graph_themes (
+                id TEXT PRIMARY KEY,
+                graph_space_id TEXT NOT NULL,
+                label TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                member_node_ids_json TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                status TEXT NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0,
+                reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
         _seed_graph_spaces(conn)
         _backfill_materials(conn)
     _migrate_graph_json_spaces(workspace)

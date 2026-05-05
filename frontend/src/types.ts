@@ -73,9 +73,17 @@ export type FocusGraph = {
 export type AskResponse = {
   question: string
   text: string
+  provider?: { provider_used?: string; model_used?: string; fallback_used?: boolean; provider_error?: string }
   contexts: EvidenceCard[]
   graph_paths: string[]
   focus_graph: FocusGraph
+}
+
+export type RecallStage = {
+  id: string
+  label: string
+  status: 'pending' | 'active' | 'done' | 'error'
+  detail?: string
 }
 
 export type Suggestion = {
@@ -107,12 +115,61 @@ export type IngestResponse = {
 }
 
 export type GraphPayload = {
-  nodes: Array<{ id: string; type: string; label: string; graph_space_id?: string; status?: string }>
-  edges: Array<{ id: string; source: string; target: string; relation: string; evidence_source_id?: string }>
+  nodes: Array<{
+    id: string
+    type: string
+    label: string
+    graph_space_id?: string
+    status?: string
+    properties?: Record<string, unknown>
+  }>
+  edges: Array<{
+    id: string
+    source: string
+    target: string
+    relation: string
+    evidence_source_id?: string
+    graph_space_id?: string
+    status?: string
+    confidence?: number
+    evidence_kind?: string
+    explanation?: string
+    origin?: string
+    rejected_reason?: string
+    weakened_reason?: string
+    hidden_reason?: string
+  }>
   node_count?: number
   edge_count?: number
   insights?: Record<string, unknown>
 }
+
+export type GraphNode = GraphPayload['nodes'][number]
+
+export type GraphEdge = GraphPayload['edges'][number]
+
+export type GraphLayoutPosition = {
+  node_id: string
+  x: number
+  y: number
+  locked?: boolean
+}
+
+export type GraphTheme = {
+  id: string
+  graph_space_id: string
+  label: string
+  description: string
+  member_node_ids: string[]
+  origin: string
+  status: string
+  confidence: number
+  reason: string
+}
+
+export type GraphInteractionMode = 'arrange' | 'connect' | 'synthesize' | 'prune'
+
+export type GraphViewMode = 'memory' | 'evidence' | 'action'
 
 export type RouteMode = 'auto' | 'manual' | 'inbox'
 

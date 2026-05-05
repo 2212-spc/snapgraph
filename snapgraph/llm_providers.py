@@ -518,6 +518,37 @@ class DeepSeekProvider:
             system=_SYNTHESIZE_SYSTEM,
         )
 
+    def stream_recall_reply(
+        self,
+        question: str,
+        contexts: list[dict],
+        graph_paths: list[str],
+    ):
+        context_text = _format_contexts_for_prompt(contexts)
+        paths_text = "\n".join(graph_paths[:4]) if graph_paths else "未找到图谱路径。"
+        messages = [
+            {"role": "system", "content": _RECALL_REPLY_SYSTEM},
+            {
+                "role": "user",
+                "content": (
+                    f"用户问题：{question}\n\n"
+                    f"可用上下文：\n{context_text}\n\n"
+                    f"图谱连接：\n{paths_text}\n\n"
+                    "请只写给用户看的 AI 回复正文。"
+                ),
+            },
+        ]
+        stream = self.client.chat.completions.create(
+            model=self.model,
+            max_tokens=700,
+            messages=messages,
+            stream=True,
+        )
+        for event in stream:
+            chunk = event.choices[0].delta.content or ""
+            if chunk:
+                yield chunk
+
 
 class QwenProvider(DeepSeekProvider):
     provider_name = "qwen"
@@ -556,6 +587,15 @@ _SYNTHESIZE_SYSTEM = """你在为一个名为 SnapGraph 的认知知识库回答
 ## 连接路径
 说明这些材料在知识图谱中如何连接；如果没有路径，也要明确写出来。
 
+## AI 探索回应
+基于材料、保存理由和连接路径，给出一段真正接住用户问题的探索性回答。
+这一段可以做有用的泛化、类比和判断推进，但必须清楚依赖哪些证据，不能伪装成用户当时的原话。
+如果证据不足，要明确说明不确定性，并把回应写成探索假设。
+这一段是用户最先看到的 AI 回复，必须像人一样直接回答用户问的“为什么 / 怎么办 / 这说明什么”。
+不要列材料数量、source_id、文件名清单或检索诊断；这些只能放在其他 section。
+用 2-4 个短段落回答，每段不超过 3 句。
+先给判断，再说明依据边界；不要只说“找到了几条线索”。
+
 ## 涌现洞见
 只基于检索证据说明这些材料串起来之后，当前最值得注意的新判断是什么。
 
@@ -569,7 +609,22 @@ _SYNTHESIZE_SYSTEM = """你在为一个名为 SnapGraph 的认知知识库回答
 - 要引用具体材料作为证据。
 - 如果置信度低，仍可提供已有信息，但必须明确标出不确定性。
 - 不要使用 emoji、横线分隔符或“这是个好问题”一类寒暄。
-- 优先恢复当时留下的原话，再解释它和当前问题的关系。"""
+- 优先恢复当时留下的原话，再解释它和当前问题的关系。
+- AI 探索回应要像一个认真读过用户图谱的思考伙伴，不要只复述材料列表。
+- 不要把英文 source id、文件路径、材料编号写进 AI 探索回应，除非用户明确询问这些。"""
+
+
+_RECALL_REPLY_SYSTEM = """你是 SnapGraph 的 AI 回复层。用户不是要看检索报告，而是要你接住问题。
+
+请只输出给用户看的正文，不要写 markdown 标题，不要列 source id、材料编号、文件路径或检索诊断。
+
+回答原则：
+- 先直接回答用户的问题，不寒暄。
+- 用 2-4 个短段落，每段不超过 3 句。
+- 可以做泛化、类比、判断推进，但必须基于给定上下文。
+- 区分用户原话和你的推断；不要把推断伪装成过去的记忆。
+- 如果证据不足，就明确说“不确定”，但仍给出一个可验证的探索假设。
+- 语气像认真读过用户图谱的思考伙伴，不像客服、报告或搜索摘要。"""
 
 
 def _format_contexts_for_prompt(contexts: list[dict]) -> str:

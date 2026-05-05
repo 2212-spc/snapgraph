@@ -77,6 +77,7 @@ def test_demo_smoke_questions_have_evidence_paths_and_lint_ok(tmp_path: Path) ->
         assert "## 找回的原话" in answer.text
         assert "## 相关材料" in answer.text
         assert "## 连接路径" in answer.text
+        assert "## AI 探索回应" in answer.text
         assert "## 涌现洞见" in answer.text
         assert "## 下一步" in answer.text
         assert "## 检索诊断" in answer.text

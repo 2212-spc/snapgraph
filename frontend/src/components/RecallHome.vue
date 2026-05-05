@@ -28,7 +28,13 @@
       </div>
     </div>
 
-    <RecallResult v-if="result || focusGraph" :result="result" :focus-graph="focusGraph" />
+    <RecallResult
+      v-if="result || focusGraph"
+      :result="result"
+      :focus-graph="focusGraph"
+      :busy="busy"
+      :stages="stages"
+    />
   </section>
 </template>
 
@@ -36,13 +42,14 @@
 import { computed, ref } from 'vue'
 import { Search } from 'lucide-vue-next'
 import RecallResult from './RecallResult.vue'
-import type { AskResponse, FocusGraph } from '../types'
+import type { AskResponse, FocusGraph, RecallStage } from '../types'
 
 const props = defineProps<{
   busy: boolean
   busyStage: string
   result: AskResponse | null
   focusGraph: FocusGraph | null
+  stages: RecallStage[]
 }>()
 
 const emit = defineEmits<{

@@ -8,9 +8,17 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .answer import answer_question, save_answer
+from .answer import (
+    ANSWER_AI_EXPLORATION,
+    answer_question,
+    clean_answer_glyphs,
+    ensure_retrieval_diagnostics,
+    render_answer,
+    save_answer,
+)
 from .config import (
     load_config,
     save_config,
@@ -20,12 +28,25 @@ from .config import (
 )
 from .demo_data import load_demo_dataset, DEMO_QUESTIONS
 from .focus import focus_graph_for_payload, focus_graph_from_retrieval
-from .graph_store import graph_diagnostics, graph_for_space, graph_insights, load_graph
+from .graph_store import (
+    create_graph_theme,
+    create_manual_edge,
+    create_user_thought,
+    graph_diagnostics,
+    graph_for_space,
+    graph_insights,
+    list_graph_themes,
+    load_graph,
+    load_graph_layout,
+    save_graph_layout,
+    update_graph_edge,
+    update_graph_theme,
+)
 from .ingest import ingest_source, update_cognitive_context
 from .linting import lint_workspace
 from .llm import MockLLM
 from .llm_providers import provider_metadata, resolve_llm_with_metadata
-from .models import DEFAULT_GRAPH_SPACE_ID, INBOX_GRAPH_SPACE_ID
+from .models import AnswerResult, DEFAULT_GRAPH_SPACE_ID, INBOX_GRAPH_SPACE_ID
 from .report import write_graph_report
 from .retrieval import retrieve_for_question
 from .spaces import (
@@ -391,6 +412,110 @@ def api_graph(space_id: str = DEFAULT_GRAPH_SPACE_ID):
     return _graph_payload(_workspace(), space_id)
 
 
+@app.get("/api/graph/layout")
+def api_graph_layout(view_id: str):
+    return load_graph_layout(_workspace(), view_id)
+
+
+@app.patch("/api/graph/layout")
+def api_graph_layout_save(payload: dict):
+    view_id = str(payload.get("view_id", "")).strip()
+    if not view_id:
+        raise HTTPException(400, "view_id is required")
+    try:
+        return save_graph_layout(
+            _workspace(),
+            view_id=view_id,
+            graph_space_id=str(payload.get("graph_space_id") or DEFAULT_GRAPH_SPACE_ID),
+            positions=list(payload.get("positions") or []),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/graph/edges")
+def api_graph_edge_create(payload: dict):
+    try:
+        edge = create_manual_edge(
+            _workspace(),
+            source=str(payload.get("source", "")),
+            target=str(payload.get("target", "")),
+            relation=str(payload.get("relation") or "related_to"),
+            reason=str(payload.get("reason", "")),
+            graph_space_id=str(payload.get("graph_space_id") or DEFAULT_GRAPH_SPACE_ID),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {"edge": edge}
+
+
+@app.patch("/api/graph/edges/{edge_id}")
+def api_graph_edge_update(edge_id: str, payload: dict):
+    try:
+        edge = update_graph_edge(
+            _workspace(),
+            edge_id,
+            status=str(payload.get("status", "")),
+            reason=str(payload.get("reason", "")),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, "Edge not found") from exc
+    return {"edge": edge}
+
+
+@app.post("/api/graph/thoughts")
+def api_graph_thought_create(payload: dict):
+    try:
+        return create_user_thought(
+            _workspace(),
+            graph_space_id=str(payload.get("graph_space_id") or DEFAULT_GRAPH_SPACE_ID),
+            node_ids=[str(node_id) for node_id in payload.get("node_ids", [])],
+            label=str(payload.get("label", "")),
+            reason=str(payload.get("reason", "")),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/graph/themes")
+def api_graph_themes(space_id: str | None = None):
+    return {"themes": list_graph_themes(_workspace(), space_id)}
+
+
+@app.post("/api/graph/themes")
+def api_graph_theme_create(payload: dict):
+    try:
+        return create_graph_theme(
+            _workspace(),
+            graph_space_id=str(payload.get("graph_space_id") or DEFAULT_GRAPH_SPACE_ID),
+            label=str(payload.get("label", "")),
+            member_node_ids=[str(node_id) for node_id in payload.get("member_node_ids", [])],
+            reason=str(payload.get("reason", "")),
+            description=str(payload.get("description", "")),
+            origin=str(payload.get("origin") or "user"),
+            status=str(payload.get("status") or "confirmed"),
+            confidence=float(payload.get("confidence", 1.0)),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.patch("/api/graph/themes/{theme_id}")
+def api_graph_theme_update(theme_id: str, payload: dict):
+    try:
+        return update_graph_theme(_workspace(), theme_id, payload)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, "Theme not found") from exc
+
+
 # ── Focus graph ──
 
 @app.post("/api/focus")
@@ -410,8 +535,17 @@ def api_ask(payload: dict):
     ws = _workspace()
     retrieval = retrieve_for_question(ws, question, space_id=space_id)
     if retrieval.contexts:
-        llm, metadata = _resolve_llm_or_503(ws)
-        metadata_dict = metadata.as_dict()
+        try:
+            llm, metadata = resolve_llm_with_metadata(ws)
+            metadata_dict = metadata.as_dict()
+        except RuntimeError as exc:
+            llm = None
+            metadata_dict = provider_metadata(
+                ws,
+                provider_used="none",
+                fallback_used=True,
+                provider_error=str(exc),
+            ).as_dict()
     else:
         llm = None
         metadata_dict = provider_metadata(ws, provider_used="none").as_dict()
@@ -424,41 +558,132 @@ def api_ask(payload: dict):
             retrieval=retrieval,
         )
     except Exception as exc:
-        _raise_provider_runtime_error(ws, metadata_dict, exc)
-    confidence_by_source = _context_confidence_by_source(ws)
-    response = {
-        "question": result.question,
-        "text": result.text,
-        "provider": metadata_dict,
-        "space_id": space_id,
-        "contexts": [
-            {
-                "source_id": c.source_id,
-                "title": c.title,
-                "why_saved": c.why_saved,
-                "why_saved_status": c.why_saved_status,
-                "related_project": c.related_project,
-                "open_loops": c.open_loops,
-                "future_recall_questions": c.future_recall_questions,
-                "confidence": confidence_by_source.get(c.source_id, 0.0),
-                "graph_space_id": c.graph_space_id,
-                "space_name": c.space_name,
-                "source_excerpt": c.source_excerpt,
-            }
-            for c in result.retrieval.contexts
-        ],
-        "graph_paths": result.retrieval.graph_paths,
-        "diagnostics": asdict(result.retrieval.diagnostics),
-        "focus_graph": focus_graph_from_retrieval(
-            ws,
-            result.retrieval,
-            space_id=space_id,
-        ),
-    }
+        if llm is not None:
+            metadata_dict = provider_metadata(
+                ws,
+                provider_used=metadata_dict.get("provider_used"),
+                fallback_used=True,
+                provider_error=str(exc),
+            ).as_dict()
+            result = answer_question(
+                ws,
+                question,
+                llm=None,
+                space_id=space_id,
+                retrieval=retrieval,
+            )
+        else:
+            _raise_provider_runtime_error(ws, metadata_dict, exc)
+    response = _ask_response_payload(ws, result, metadata_dict, space_id)
     if save:
         page = save_answer(ws, result)
         response["saved_page"] = page.relative_page_path
     return response
+
+
+@app.post("/api/ask/stream")
+def api_ask_stream(payload: dict):
+    question = payload.get("question", "").strip()
+    save = payload.get("save", False)
+    if not question:
+        raise HTTPException(400, "Question is required")
+    space_id = str(payload.get("space_id") or "all")
+
+    def generate():
+        ws = _workspace()
+        retrieval = retrieve_for_question(ws, question, space_id=space_id)
+        focus_graph = focus_graph_from_retrieval(ws, retrieval, space_id=space_id)
+        yield _sse(
+            "stage",
+            {
+                "id": "evidence",
+                "label": "找本地证据",
+                "status": "done",
+                "detail": f"找到 {len(retrieval.contexts)} 条相关材料",
+            },
+        )
+        yield _sse(
+            "focus",
+            {
+                "contexts": _contexts_payload(ws, retrieval),
+                "graph_paths": retrieval.graph_paths,
+                "diagnostics": asdict(retrieval.diagnostics),
+                "focus_graph": focus_graph,
+            },
+        )
+
+        if not retrieval.contexts:
+            result = answer_question(ws, question, llm=None, space_id=space_id, retrieval=retrieval)
+            yield _sse("final", _ask_response_payload(ws, result, provider_metadata(ws, provider_used="none").as_dict(), space_id))
+            return
+
+        yield _sse(
+            "stage",
+            {
+                "id": "read",
+                "label": "读用户原话",
+                "status": "done",
+                "detail": f"{retrieval.diagnostics.user_stated_contexts} 条 user-stated",
+            },
+        )
+        yield _sse(
+            "stage",
+            {
+                "id": "connect",
+                "label": "检查图谱连接",
+                "status": "done",
+                "detail": f"{len(retrieval.graph_paths)} 条连接路径",
+            },
+        )
+        yield _sse("stage", {"id": "write", "label": "生成 AI 回复", "status": "active", "detail": "Qwen 正在组织回答"})
+
+        try:
+            llm, metadata = resolve_llm_with_metadata(ws)
+            metadata_dict = metadata.as_dict()
+            context_dicts = _context_dicts(retrieval)
+            if hasattr(llm, "stream_recall_reply"):
+                reply_chunks: list[str] = []
+                for chunk in llm.stream_recall_reply(question, context_dicts, retrieval.graph_paths):
+                    reply_chunks.append(chunk)
+                    yield _sse("chunk", {"text": chunk})
+                ai_reply = clean_answer_glyphs("".join(reply_chunks).strip())
+                final_text = render_answer(retrieval, question=question)
+                if ai_reply:
+                    final_text = _replace_markdown_section(final_text, ANSWER_AI_EXPLORATION, ai_reply)
+                final_text = ensure_retrieval_diagnostics(final_text, retrieval)
+                result = AnswerResult(question=question, text=final_text, retrieval=retrieval)
+            else:
+                result = answer_question(ws, question, llm=llm, space_id=space_id, retrieval=retrieval)
+        except Exception as exc:
+            metadata_dict = provider_metadata(
+                ws,
+                provider_used="none",
+                fallback_used=True,
+                provider_error=str(exc),
+            ).as_dict()
+            yield _sse(
+                "stage",
+                {
+                    "id": "write",
+                    "label": "生成 AI 回复",
+                    "status": "error",
+                    "detail": "模型暂时不可用，保留本地证据",
+                },
+            )
+            result = answer_question(ws, question, llm=None, space_id=space_id, retrieval=retrieval)
+
+        response = _ask_response_payload(ws, result, metadata_dict, space_id)
+        if save:
+            page = save_answer(ws, result)
+            response["saved_page"] = page.relative_page_path
+        yield _sse("stage", {"id": "write", "label": "生成 AI 回复", "status": "done", "detail": "回答已完成"})
+        yield _sse("final", response)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Report ──
@@ -595,6 +820,83 @@ def api_demo_questions():
 
 
 # ── Helpers ──
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _context_dicts(retrieval) -> list[dict]:
+    return [
+        {
+            "source_id": context.source_id,
+            "source_page": context.source_page,
+            "title": context.title,
+            "why_saved": context.why_saved,
+            "why_saved_status": context.why_saved_status,
+            "related_project": context.related_project,
+            "open_loops": context.open_loops,
+            "future_recall_questions": context.future_recall_questions,
+            "graph_space_id": context.graph_space_id,
+            "space_name": context.space_name,
+            "source_excerpt": context.source_excerpt,
+        }
+        for context in retrieval.contexts
+    ]
+
+
+def _contexts_payload(ws: Workspace, retrieval) -> list[dict]:
+    confidence_by_source = _context_confidence_by_source(ws)
+    return [
+        {
+            "source_id": context.source_id,
+            "title": context.title,
+            "why_saved": context.why_saved,
+            "why_saved_status": context.why_saved_status,
+            "related_project": context.related_project,
+            "open_loops": context.open_loops,
+            "future_recall_questions": context.future_recall_questions,
+            "confidence": confidence_by_source.get(context.source_id, 0.0),
+            "graph_space_id": context.graph_space_id,
+            "space_name": context.space_name,
+            "source_excerpt": context.source_excerpt,
+        }
+        for context in retrieval.contexts
+    ]
+
+
+def _ask_response_payload(
+    ws: Workspace,
+    result: AnswerResult,
+    metadata_dict: dict,
+    space_id: str,
+) -> dict:
+    return {
+        "question": result.question,
+        "text": result.text,
+        "provider": metadata_dict,
+        "space_id": space_id,
+        "contexts": _contexts_payload(ws, result.retrieval),
+        "graph_paths": result.retrieval.graph_paths,
+        "diagnostics": asdict(result.retrieval.diagnostics),
+        "focus_graph": focus_graph_from_retrieval(
+            ws,
+            result.retrieval,
+            space_id=space_id,
+        ),
+    }
+
+
+def _replace_markdown_section(text: str, heading: str, body: str) -> str:
+    start = text.find(heading)
+    if start < 0:
+        return "\n".join([text.rstrip(), "", heading, body.strip()]).rstrip()
+    body_start = start + len(heading)
+    next_match = text.find("\n## ", body_start)
+    replacement = f"{heading}\n{body.strip()}\n"
+    if next_match < 0:
+        return f"{text[:start].rstrip()}\n{replacement}".rstrip()
+    return f"{text[:start].rstrip()}\n{replacement}{text[next_match:].lstrip()}".rstrip()
+
 
 def _parse_frontmatter(text: str) -> dict[str, str]:
     if not text.startswith("---\n"):
