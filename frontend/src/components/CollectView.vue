@@ -81,19 +81,23 @@
           继续收集
         </button>
 
-        <a
+        <button
           v-if="canOpenSource"
           class="ghost-button source-link-button"
-          :href="sourceHref(activeReceipt.source_id)"
-          target="_blank"
-          rel="noopener noreferrer"
+          type="button"
+          @click="receiptDetailOpen = !receiptDetailOpen"
         >
-          打开来源
-        </a>
+          {{ receiptDetailOpen ? '收起材料详情' : '查看材料详情' }}
+        </button>
         <button v-else class="ghost-button source-link-button" type="button" disabled>
-          打开来源
+          查看材料详情
         </button>
       </div>
+
+      <section v-if="receiptDetailOpen" class="receipt-source-detail">
+        <span>材料摘录</span>
+        <p>{{ receiptDetailText }}</p>
+      </section>
     </section>
 
     <section class="collect-card" @dragover.prevent @drop.prevent="onDrop">
@@ -159,7 +163,7 @@
       <div class="section-head compact">
         <div class="section-kicker">正在入库</div>
         <h3>{{ progressTitle }}</h3>
-        <p>这是前端阶段性状态，用来说明当前正在处理，不代表后端真实流式进度。</p>
+        <p>先把材料收进来，再整理摘要、保存理由和可能连接。</p>
       </div>
 
       <div class="ingest-step-list">
@@ -234,6 +238,7 @@ const textInput = ref<HTMLTextAreaElement | null>(null)
 const lastSubmitted = ref<SubmittedSnapshot | null>(null)
 const hiddenReceiptSourceId = ref('')
 const simulatedStepIndex = ref(0)
+const receiptDetailOpen = ref(false)
 
 const STEP_DEFINITIONS = [
   { id: 'extract', label: '提取内容', detail: '先把这份材料转成可以整理的文本' },
@@ -332,6 +337,11 @@ const connectionSuggestions = computed(() => {
 })
 const canOpenSource = computed(() => Boolean(activeReceipt.value?.source_id))
 const canOpenSpace = computed(() => Boolean(activeReceipt.value?.graph_space_id))
+const receiptDetailText = computed(() => {
+  const excerpt = currentEvidenceCard.value?.source_excerpt?.trim()
+  const summary = activeReceipt.value?.summary?.trim()
+  return excerpt || summary || '这份材料已经保存，暂时还没有可以展示的摘录。'
+})
 
 watch(showProgress, (active) => {
   if (active) {
@@ -346,6 +356,7 @@ watch(
   (sourceId, previous) => {
     if (sourceId && sourceId !== previous) {
       hiddenReceiptSourceId.value = ''
+      receiptDetailOpen.value = false
     }
   },
 )
@@ -423,10 +434,6 @@ function sourceType(type: string) {
   if (type === 'webpage') return '网页'
   if (type === 'markdown') return 'Markdown'
   return type || '材料'
-}
-
-function sourceHref(sourceId: string) {
-  return `/api/sources/${encodeURIComponent(sourceId)}`
 }
 
 function friendlySpaceName(spaceId?: string) {

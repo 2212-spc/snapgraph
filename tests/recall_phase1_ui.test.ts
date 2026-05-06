@@ -19,6 +19,7 @@ test('RecallHome uses memory-recall framing and example chips', () => {
   assert.match(file, /example-chip/)
   assert.match(file, /const heroCopy = computed/)
   assert.match(file, /v-if="!showResult" class="prompt-row example-chip-row"/)
+  assert.match(file, /emit\('recall', prompt\)/)
 })
 
 test('RecallResult contains phase 1.5 answer cleanup, compact summary, and localized source actions', () => {
@@ -36,7 +37,8 @@ test('RecallResult contains phase 1.5 answer cleanup, compact summary, and local
   assert.match(file, /const evidenceMaterialLimit = 2/)
   assert.match(file, /evidence-summary-compact/)
   assert.match(file, /source-link-button/)
-  assert.match(file, /打开来源/)
+  assert.match(file, /展开材料/)
+  assert.match(file, /source-inline-detail/)
   assert.match(file, /查看全部材料/)
 })
 
@@ -50,5 +52,6 @@ test('styles include phase 1.5 recall result mode and mobile summary classes', (
   assert.match(file, /\.subtle-empty-state/)
   assert.match(file, /\.evidence-summary-compact/)
   assert.match(file, /\.source-link-button/)
+  assert.match(file, /\.source-inline-detail/)
   assert.match(file, /\.recall-home\.has-result \.recall-command textarea/)
 })

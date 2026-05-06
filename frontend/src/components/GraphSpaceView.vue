@@ -471,7 +471,7 @@
 
           <section v-if="sourceDetailOpen" class="source-markdown">
             <div>
-              <span>Source Markdown</span>
+              <span>来源内容</span>
               <button class="text-button" @click="sourceDetailOpen = false">收起</button>
             </div>
             <pre>{{ sourceDetail?.markdown }}</pre>

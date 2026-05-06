@@ -156,16 +156,19 @@
                 {{ materialBadge(card) }}
               </span>
             </div>
-            <a
+            <button
               class="source-link-button"
-              :href="sourceHref(card.source_id)"
-              target="_blank"
-              rel="noopener noreferrer"
+              type="button"
+              @click="expandedSourceId = expandedSourceId === card.source_id ? '' : card.source_id"
             >
-              打开来源
-            </a>
+              {{ expandedSourceId === card.source_id ? '收起材料' : '展开材料' }}
+            </button>
           </div>
           <p>{{ displayReason(card.why_saved || card.source_excerpt, card.why_saved_status) }}</p>
+          <div v-if="expandedSourceId === card.source_id" class="source-inline-detail">
+            <span>材料摘录</span>
+            <p>{{ sourceDetailText(card) }}</p>
+          </div>
         </article>
 
         <button
@@ -207,6 +210,7 @@ const props = defineProps<{
 const previewLimit = 3
 const evidenceMaterialLimit = 2
 const showAllMaterials = ref(false)
+const expandedSourceId = ref('')
 
 const materials = computed<EvidenceCard[]>(() => props.result?.contexts || props.focusGraph?.evidence_cards || [])
 const userStatements = computed(() => materials.value.filter((card) => card.why_saved_status === 'user-stated'))
@@ -253,6 +257,7 @@ const evidenceSummaryChips = computed<SummaryChip[]>(() => {
 
 watch(materials, () => {
   showAllMaterials.value = false
+  expandedSourceId.value = ''
 })
 
 function sectionText(heading: string) {
@@ -354,8 +359,10 @@ function materialTone(card: EvidenceCard) {
   return 'tone-source'
 }
 
-function sourceHref(sourceId: string) {
-  return `/api/sources/${encodeURIComponent(sourceId)}`
+function sourceDetailText(card: EvidenceCard) {
+  const excerpt = cleanText(card.source_excerpt || '')
+  const reason = displayReason(card.why_saved || '', card.why_saved_status)
+  return excerpt || reason || '这条材料暂时还没有可以展示的摘录。'
 }
 
 function cleanText(markdown: string) {

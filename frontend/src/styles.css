@@ -954,6 +954,7 @@ button:not(:disabled):hover {
   font-size: 0.82rem;
   font-weight: 720;
   text-decoration: none;
+  cursor: pointer;
   box-shadow: none;
   transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
 }
@@ -961,6 +962,35 @@ button:not(:disabled):hover {
 .source-link-button:hover {
   border-color: rgba(49, 95, 159, 0.18);
   background: #fffefd;
+}
+
+.source-inline-detail,
+.receipt-source-detail {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(77, 61, 42, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 12px;
+}
+
+.source-inline-detail {
+  margin-top: 12px;
+}
+
+.source-inline-detail span,
+.receipt-source-detail span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+}
+
+.source-inline-detail p,
+.receipt-source-detail p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.66;
 }
 
 .source-card-meta {

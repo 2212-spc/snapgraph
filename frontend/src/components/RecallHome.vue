@@ -97,5 +97,6 @@ function submit() {
 
 function usePrompt(prompt: string) {
   question.value = prompt
+  emit('recall', prompt)
 }
 </script>
