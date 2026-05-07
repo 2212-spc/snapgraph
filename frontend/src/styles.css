@@ -1241,6 +1241,11 @@ button:not(:disabled):hover {
   padding: 16px;
 }
 
+.receipt-title-field {
+  display: flex;
+  flex-direction: column;
+}
+
 .receipt-field > span {
   display: block;
   margin-bottom: 8px;
@@ -1252,6 +1257,47 @@ button:not(:disabled):hover {
 .receipt-field strong {
   color: var(--ink);
   font-size: 1rem;
+}
+
+.receipt-title-display {
+  min-height: 78px;
+  display: grid;
+  align-content: space-between;
+  gap: 14px;
+}
+
+.receipt-title-display strong {
+  overflow-wrap: anywhere;
+}
+
+.receipt-edit-button {
+  justify-self: end;
+}
+
+.receipt-title-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.receipt-title-editor input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffefd;
+  color: var(--ink);
+  padding: 10px 12px;
+  outline: none;
+}
+
+.receipt-title-editor input:focus {
+  border-color: rgba(49, 95, 159, 0.44);
+  box-shadow: 0 0 0 3px rgba(49, 95, 159, 0.12);
+}
+
+.receipt-title-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .receipt-field-body {

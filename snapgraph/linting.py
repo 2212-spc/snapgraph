@@ -283,14 +283,16 @@ def _check_duplicate_content_hashes(workspace: Workspace, warnings: list[str]) -
     with sqlite3.connect(workspace.sqlite_path) as conn:
         rows = conn.execute(
             """
-            SELECT content_hash, GROUP_CONCAT(id)
+            SELECT graph_space_id, content_hash, GROUP_CONCAT(id)
             FROM sources
-            GROUP BY content_hash
+            GROUP BY graph_space_id, content_hash
             HAVING COUNT(*) > 1
             """
         ).fetchall()
-    for content_hash, source_ids in rows:
-        warnings.append(f"duplicate content hash {content_hash}: {source_ids}")
+    for graph_space_id, content_hash, source_ids in rows:
+        warnings.append(
+            f"duplicate content hash in {graph_space_id}: {content_hash}: {source_ids}"
+        )
 
 
 def _check_cognitive_context_against_page(

@@ -42,7 +42,7 @@ from .graph_store import (
     update_graph_edge,
     update_graph_theme,
 )
-from .ingest import ingest_source, update_cognitive_context
+from .ingest import ingest_source, update_cognitive_context, update_source_title
 from .linting import lint_workspace
 from .llm import MockLLM
 from .llm_providers import provider_metadata, resolve_llm_with_metadata
@@ -202,6 +202,8 @@ def api_suggestions_accept(suggestion_id: str):
         return accept_suggestion(_workspace(), suggestion_id)
     except KeyError as exc:
         raise HTTPException(404, "Suggestion not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/suggestions/{suggestion_id}/reject")
@@ -309,6 +311,19 @@ def api_source_context_update(source_id: str, payload: dict):
     return {"detail": detail or {}}
 
 
+@app.patch("/api/sources/{source_id}/title")
+def api_source_title_update(source_id: str, payload: dict):
+    """Update the user-visible title for a captured source."""
+    try:
+        update_source_title(_workspace(), source_id, str(payload.get("title", "")))
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
+    return {"detail": detail or {}}
+
+
 @app.post("/api/ingest")
 def api_ingest(
     file: UploadFile = File(...),
@@ -337,6 +352,7 @@ def api_ingest(
                 why=why or None,
                 llm=llm,
                 space_id=ingest_space_id,
+                dedupe_scope="workspace" if route_mode == "auto" else "space",
             )
         except Exception as exc:
             _raise_provider_runtime_error(ws, metadata.as_dict(), exc)
@@ -359,6 +375,7 @@ def api_ingest(
         "space_name": source_detail.get("space_name", ""),
         "routing_suggestion_id": result.routing_suggestion_id,
         "warnings": result.warnings,
+        "deduplicated": result.deduplicated,
         "provider": metadata.as_dict(),
         "focus_graph": focus_graph_for_payload(
             ws,
@@ -389,6 +406,8 @@ def api_source_route(source_id: str, payload: dict):
         move_source_to_space(_workspace(), source_id, space_id, reason=reason)
     except KeyError as exc:
         raise HTTPException(404, "Source or space not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
     return {"detail": detail or {}}
 

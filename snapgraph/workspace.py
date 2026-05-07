@@ -273,6 +273,7 @@ def initialize_database(workspace: Workspace) -> None:
         )
         _seed_graph_spaces(conn)
         _backfill_materials(conn)
+        _ensure_source_content_indexes(conn)
     _migrate_graph_json_spaces(workspace)
 
 
@@ -328,6 +329,33 @@ def _ensure_column(
     }
     if column not in existing:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+
+def _ensure_source_content_indexes(conn: sqlite3.Connection) -> None:
+    """Index exact source lookups and add a unique guard when existing data allows it."""
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_sources_graph_space_content_hash
+        ON sources(graph_space_id, content_hash)
+        """
+    )
+    duplicate = conn.execute(
+        """
+        SELECT 1
+        FROM sources
+        GROUP BY graph_space_id, content_hash
+        HAVING COUNT(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicate is not None:
+        return
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_sources_graph_space_content_hash
+        ON sources(graph_space_id, content_hash)
+        """
+    )
 
 
 def _seed_graph_spaces(conn: sqlite3.Connection) -> None:

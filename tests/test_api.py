@@ -225,6 +225,52 @@ def test_api_can_confirm_and_correct_context(tmp_path: Path, monkeypatch) -> Non
     assert detail["open_loops"] == ["Rewrite the proposal framing."]
 
 
+def test_api_can_update_source_title(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Old Title\n\nMemory receipt draft.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    response = client.patch(
+        f"/api/sources/{source_id}/title",
+        json={"title": "用户确认后的保存名"},
+    )
+
+    assert response.status_code == 200
+    detail = response.json()["detail"]
+    assert detail["title"] == "用户确认后的保存名"
+
+
+def test_api_ingest_reuses_exact_duplicate_in_same_manual_space(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    first = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Same\n\nExact duplicate.\n", "text/markdown")},
+        data={"route_mode": "manual", "space_id": "default"},
+    )
+    second = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Same\n\nExact duplicate.\n", "text/markdown")},
+        data={"route_mode": "manual", "space_id": "default"},
+    )
+    sources = client.get("/api/spaces/default/sources")
+    graph = client.get("/api/spaces/default/graph")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["deduplicated"] is True
+    assert second.json()["source_id"] == first.json()["source_id"]
+    assert len(sources.json()) == 1
+    assert not any(edge["relation"] == "related_to" for edge in graph.json()["edges"])
+
+
 def test_api_ingest_accepts_pdf_as_capture_shell(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)

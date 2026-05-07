@@ -1,5 +1,6 @@
 .env
 .env.*
+.venv/
 .claude/
 .my_snapgraph/
 .pytest_cache/

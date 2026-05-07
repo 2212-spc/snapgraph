@@ -115,6 +115,8 @@ export type IngestResponse = {
   space_name: string
   focus_graph: FocusGraph
   routing_suggestion?: Suggestion | null
+  warnings?: string[]
+  deduplicated?: boolean
   provider?: { provider_used?: string; fallback_used?: boolean }
 }
 

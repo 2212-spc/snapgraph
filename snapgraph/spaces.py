@@ -293,6 +293,19 @@ def move_source_to_space(
 ) -> None:
     create_workspace(workspace)
     get_graph_space(workspace, space_id)
+    content_hash, _current_space_id = _source_route_profile(workspace, source_id)
+    duplicate_source_id = _duplicate_source_id_in_space(
+        workspace,
+        content_hash=content_hash,
+        graph_space_id=space_id,
+        excluded_source_id=source_id,
+    )
+    if duplicate_source_id is not None:
+        raise ValueError(
+            "duplicate content_hash already exists in target space as "
+            f"{duplicate_source_id}"
+        )
+
     graph = load_graph(workspace)
     node_ids_to_move = _source_node_ids(graph, source_id)
     for node in graph.get("nodes", []):
@@ -332,6 +345,46 @@ def move_source_to_space(
             workspace.relative_to_workspace(workspace.sqlite_path),
         ],
     )
+
+
+def _source_route_profile(workspace: Workspace, source_id: str) -> tuple[str, str]:
+    """Return the content hash and current graph space for a source being routed."""
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        row = conn.execute(
+            """
+            SELECT content_hash, graph_space_id
+            FROM sources
+            WHERE id = ?
+            """,
+            (source_id,),
+        ).fetchone()
+    if row is None:
+        raise KeyError(source_id)
+    return row[0], row[1] or DEFAULT_GRAPH_SPACE_ID
+
+
+def _duplicate_source_id_in_space(
+    workspace: Workspace,
+    *,
+    content_hash: str,
+    graph_space_id: str,
+    excluded_source_id: str,
+) -> str | None:
+    """Find another source with the same exact content in the target space."""
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM sources
+            WHERE content_hash = ?
+              AND graph_space_id = ?
+              AND id != ?
+            ORDER BY imported_at ASC, id ASC
+            LIMIT 1
+            """,
+            (content_hash, graph_space_id, excluded_source_id),
+        ).fetchone()
+    return row[0] if row else None
 
 
 def _counts_by_space(conn: sqlite3.Connection, table: str) -> dict[str, int]:
