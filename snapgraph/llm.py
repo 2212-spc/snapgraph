@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Protocol
 
 
 class LLMProvider(Protocol):
     def summarize(self, text: str) -> str: ...
+
+    def memory_title(self, text: str, why: str | None = None) -> str: ...
 
     def key_details(self, text: str) -> list[str]: ...
 
@@ -36,6 +39,18 @@ class MockLLM(LLMProvider):
             return "空内容。"
         first = lines[0]
         return first[:220]
+
+    def memory_title(self, text: str, why: str | None = None) -> str:
+        """Return a compact memory label from capture content and save reason."""
+        reason = (why or "").strip()
+        content = _first_capture_content_line(text)
+        if reason and content:
+            return _compact_memory_title(f"{reason}：{content}")
+        if reason:
+            return _compact_memory_title(reason)
+        if content:
+            return _compact_memory_title(content)
+        return "新的材料"
 
     def key_details(self, text: str) -> list[str]:
         lines = _meaningful_lines(text)
@@ -199,3 +214,27 @@ def _meaningful_lines(text: str) -> list[str]:
         if cleaned:
             lines.append(cleaned)
     return lines
+
+
+def _first_capture_content_line(text: str) -> str:
+    """Return the first non-heading line from a free-form capture."""
+    body_lines: list[str] = []
+    for line in text.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        if cleaned.startswith("#") and not body_lines:
+            continue
+        normalized = cleaned.lstrip("#").strip()
+        if normalized:
+            body_lines.append(normalized)
+    return (body_lines or _meaningful_lines(text) or [""])[0]
+
+
+def _compact_memory_title(text: str, limit: int = 48) -> str:
+    """Normalize generated memory titles for receipt display."""
+    cleaned = re.sub(r"\s+", " ", text).strip(" \t\r\n\"'“”‘’`")
+    cleaned = re.sub(r"^(?:保存为|标题|记忆标题)\s*[:：]\s*", "", cleaned)
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip("，。；、:： ")

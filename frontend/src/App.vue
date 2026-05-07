@@ -68,6 +68,7 @@
         :results="collectResults"
         @collect="collectMaterials"
         @open-space="openCollectedSpace"
+        @update-title="updateSourceTitle"
       />
     </main>
 
@@ -401,6 +402,29 @@ async function openCollectedSpace(spaceId: string) {
   await selectSpace(spaceId)
 }
 
+async function updateSourceTitle(sourceId: string, title: string) {
+  const nextTitle = title.trim()
+  if (!sourceId || !nextTitle) return
+
+  busy.value = true
+  try {
+    const response = await api<{ detail: Source }>(`/api/sources/${encodeURIComponent(sourceId)}/title`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: nextTitle }),
+    })
+    const savedTitle = response.detail?.title || nextTitle
+    collectResults.value = collectResults.value.map((result) => (
+      result.source_id === sourceId ? renameIngestResult(result, savedTitle) : result
+    ))
+    await refreshShell()
+    showToast('保存名称已更新。')
+  } catch (error) {
+    showToast(messageFromError(error), 'error')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function createSpace(payload: { name: string; purpose: string; description: string; color: string }) {
   busy.value = true
   try {
@@ -530,6 +554,22 @@ function textAsMarkdownFile(text: string) {
   const title = firstLine.replace(/^#+\s*/, '').slice(0, 48) || '捕获材料'
   const markdown = cleaned.startsWith('#') ? `${cleaned}\n` : `# ${title}\n\n${cleaned}\n`
   return new File([markdown], `capture-${Date.now()}.md`, { type: 'text/markdown' })
+}
+
+function renameIngestResult(result: IngestResponse, title: string): IngestResponse {
+  return {
+    ...result,
+    title,
+    focus_graph: {
+      ...result.focus_graph,
+      nodes: result.focus_graph.nodes.map((node) => (
+        node.id === `source_${result.source_id}` ? { ...node, label: title } : node
+      )),
+      evidence_cards: result.focus_graph.evidence_cards.map((card) => (
+        card.source_id === result.source_id ? { ...card, title } : card
+      )),
+    },
+  }
 }
 
 function showToast(message: string, kind: ToastKind = 'info') {

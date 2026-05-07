@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from snapgraph.answer import answer_question, save_answer
@@ -94,13 +95,22 @@ def test_lint_reports_duplicate_content_hash(tmp_path: Path) -> None:
     source_path.write_text("same", encoding="utf-8")
     workspace = Workspace(tmp_path)
     create_workspace(workspace)
-    ingest_source(workspace, source_path)
-    ingest_source(workspace, source_path)
+    first = ingest_source(workspace, source_path, space_id="default")
+    second = ingest_source(workspace, source_path, space_id="inbox")
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        conn.execute("DROP INDEX IF EXISTS ux_sources_graph_space_content_hash")
+        conn.execute(
+            "UPDATE sources SET graph_space_id = ? WHERE id = ?",
+            (first.source.graph_space_id, second.source.id),
+        )
 
     result = lint_workspace(workspace)
 
     assert result.status == "WARN"
-    assert any("duplicate content hash" in warning for warning in result.warnings)
+    assert any(
+        f"duplicate content hash in {first.source.graph_space_id}" in warning
+        for warning in result.warnings
+    )
 
 
 def test_lint_reports_dead_index_link(tmp_path: Path) -> None:

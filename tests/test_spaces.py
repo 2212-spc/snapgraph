@@ -9,7 +9,12 @@ from snapgraph.api import app
 from snapgraph.graph_store import graph_for_space, load_graph
 from snapgraph.ingest import ingest_source
 from snapgraph.models import DEFAULT_GRAPH_SPACE_ID, INBOX_GRAPH_SPACE_ID
-from snapgraph.spaces import create_graph_space, create_route_suggestion, accept_suggestion
+from snapgraph.spaces import (
+    accept_suggestion,
+    create_graph_space,
+    create_route_suggestion,
+    move_source_to_space,
+)
 from snapgraph.workspace import Workspace, create_workspace
 
 
@@ -102,6 +107,36 @@ def test_answer_space_filter_and_no_match_fail_closed(tmp_path: Path) -> None:
     assert default_answer.retrieval.contexts == []
     assert "低置信度" in default_answer.text
     assert "低置信度" in no_match.text
+
+
+def test_move_source_rejects_exact_duplicate_in_target_space(tmp_path: Path) -> None:
+    workspace = Workspace(tmp_path)
+    create_workspace(workspace)
+    source_path = tmp_path / "same.md"
+    source_path.write_text("# Same\n\nExact duplicate.\n", encoding="utf-8")
+    first = ingest_source(workspace, source_path, space_id=DEFAULT_GRAPH_SPACE_ID)
+    second = ingest_source(workspace, source_path, space_id=INBOX_GRAPH_SPACE_ID)
+    before_graph = load_graph(workspace)
+
+    try:
+        move_source_to_space(workspace, second.source.id, DEFAULT_GRAPH_SPACE_ID)
+    except ValueError as exc:
+        assert "duplicate content_hash already exists in target space" in str(exc)
+    else:
+        raise AssertionError("Expected duplicate route to be rejected")
+
+    after_graph = load_graph(workspace)
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        target_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM sources
+            WHERE graph_space_id = ? AND content_hash = ?
+            """,
+            (DEFAULT_GRAPH_SPACE_ID, first.source.content_hash),
+        ).fetchone()[0]
+    assert before_graph == after_graph
+    assert target_count == 1
 
 
 def test_api_ingest_auto_route_accepts_high_confidence_suggestion(tmp_path: Path, monkeypatch) -> None:

@@ -191,6 +191,29 @@ class AnthropicProvider:
             system=_SUMMARIZE_SYSTEM,
         )
 
+    def memory_title(self, text: str, why: str | None = None) -> str:
+        """Generate a concise receipt title from capture content and save reason."""
+        content = text.strip()[:4000]
+        reason = (why or "").strip()[:800]
+        if not content and not reason:
+            return "新的材料"
+        return self._call(
+            prompt=(
+                "请给这次保存生成一个“保存为”标题。\n"
+                "要求：\n"
+                "- 根据材料内容和用户写下的保存理由综合概括。\n"
+                "- 不要只照抄材料第一句话。\n"
+                "- 15-28 个汉字左右，像知识库里的记忆标签。\n"
+                "- 只输出标题，不要引号、编号或解释。\n\n"
+                f"用户写下的保存理由：\n{reason or '无'}\n\n"
+                f"材料内容：\n{content or '无'}"
+            ),
+            system=(
+                "你在为个人认知知识库生成可回看的记忆标题。"
+                "标题应凝练、具体、忠于证据，不要夸大或编造。"
+            ),
+        )
+
     def key_details(self, text: str) -> list[str]:
         if not text.strip():
             return ["未提取到关键细节。"]
@@ -381,6 +404,29 @@ class DeepSeekProvider:
                 f"文档：\n{text}"
             ),
             system=_SUMMARIZE_SYSTEM,
+        )
+
+    def memory_title(self, text: str, why: str | None = None) -> str:
+        """Generate a concise receipt title from capture content and save reason."""
+        content = text.strip()[:4000]
+        reason = (why or "").strip()[:800]
+        if not content and not reason:
+            return "新的材料"
+        return self._call(
+            prompt=(
+                "请给这次保存生成一个“保存为”标题。\n"
+                "要求：\n"
+                "- 根据材料内容和用户写下的保存理由综合概括。\n"
+                "- 不要只照抄材料第一句话。\n"
+                "- 15-28 个汉字左右，像知识库里的记忆标签。\n"
+                "- 只输出标题，不要引号、编号或解释。\n\n"
+                f"用户写下的保存理由：\n{reason or '无'}\n\n"
+                f"材料内容：\n{content or '无'}"
+            ),
+            system=(
+                "你在为个人认知知识库生成可回看的记忆标题。"
+                "标题应凝练、具体、忠于证据，不要夸大或编造。"
+            ),
         )
 
     def key_details(self, text: str) -> list[str]:

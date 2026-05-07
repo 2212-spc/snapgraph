@@ -148,6 +148,7 @@ class IngestResult:
     page: SourcePage
     warnings: list[str]
     routing_suggestion_id: str | None = None
+    deduplicated: bool = False
 
 
 @dataclass(frozen=True)
