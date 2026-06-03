@@ -105,6 +105,19 @@ export type Suggestion = {
   status: string
 }
 
+export type SavedQuestion = {
+  id: string
+  question: string
+  path: string
+  evidence_source_ids: string[]
+}
+
+export type SavedQuestionDetail = SavedQuestion & {
+  answer: string
+  answer_heading: string
+  markdown: string
+}
+
 export type IngestResponse = {
   source_id: string
   title: string

@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Python package
+        run: python -m pip install -e ".[demo,test]"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run Python tests
+        run: pytest -q
+
+      - name: Run frontend behavior tests
+        run: node --test tests/*.test.ts
+
+      - name: Build frontend
+        run: npm run build

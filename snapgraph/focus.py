@@ -26,7 +26,12 @@ def focus_graph_for_payload(workspace: Workspace, payload: dict) -> dict:
     node_id = str(payload.get("node_id") or "").strip()
 
     if question:
-        retrieval = retrieve_for_question(workspace, question, space_id=space_id)
+        retrieval = retrieve_for_question(
+            workspace,
+            question,
+            space_id=space_id,
+            context_source_ids=_payload_source_ids(payload),
+        )
         return focus_graph_from_retrieval(workspace, retrieval, space_id=space_id)
     if source_id:
         contexts = _contexts_for_sources(workspace, [source_id], space_id=space_id)
@@ -142,6 +147,13 @@ def _empty_focus_graph(center: dict, space_id: str) -> dict:
 
 def _rank_contexts(contexts: list[RetrievedContext]) -> list[RetrievedContext]:
     return contexts
+
+
+def _payload_source_ids(payload: dict) -> list[str]:
+    raw = payload.get("context_source_ids") or payload.get("batch_source_ids") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw]
 
 
 def _rank_edges(edges: list[dict]) -> list[dict]:

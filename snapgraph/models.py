@@ -89,6 +89,7 @@ class RetrievalDiagnostics:
     graph_node_hits: int
     expanded_nodes: int
     source_pages_used: int
+    pinned_contexts: int
     user_stated_contexts: int
     ai_inferred_contexts: int
     top_candidate_reasons: list[str]

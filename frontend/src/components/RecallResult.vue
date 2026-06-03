@@ -4,7 +4,7 @@
       <div class="answer-card-head">
         <div>
           <div class="result-kicker">记忆找回</div>
-          <h2>这是我的回答</h2>
+          <h2>先给结论</h2>
         </div>
         <div v-if="evidenceSummaryChips.length" class="evidence-summary">
           <span
@@ -31,20 +31,30 @@
       </div>
     </article>
 
-    <div v-if="stages.length" class="agent-trace" aria-label="AI response progress">
-      <div
-        v-for="stage in stages"
-        :key="stage.id"
-        class="agent-step"
-        :class="stage.status"
-      >
-        <i aria-hidden="true"></i>
+    <details v-if="stages.length" class="agent-trace agent-trace-compact" :open="busy" aria-label="AI response progress">
+      <summary class="agent-trace-summary">
+        <i :class="traceStatus" aria-hidden="true"></i>
         <div>
-          <strong>{{ stage.label }}</strong>
-          <small>{{ stage.detail || stageLabel(stage.status) }}</small>
+          <strong>{{ traceTitle }}</strong>
+          <small>{{ traceDetail }}</small>
+        </div>
+        <span class="trace-disclosure">{{ busy ? '处理中' : '查看过程' }}</span>
+      </summary>
+      <div class="agent-step-list">
+        <div
+          v-for="stage in stages"
+          :key="stage.id"
+          class="agent-step"
+          :class="stage.status"
+        >
+          <i aria-hidden="true"></i>
+          <div>
+            <strong>{{ stage.label }}</strong>
+            <small>{{ stage.detail || stageLabel(stage.status) }}</small>
+          </div>
         </div>
       </div>
-    </div>
+    </details>
 
     <section class="evidence-chain">
       <div class="section-head">
@@ -226,7 +236,7 @@ const graphPaths = computed(() => {
     .map((line) => line.replace(/^[-\d.]+\s*/, '').trim())
     .filter(Boolean)
 })
-const answerText = computed(() => normalizeAnswerText(sectionText('## AI 探索回应') || fallbackAnswerText()))
+const answerText = computed(() => normalizeAnswerText(sectionText('## 结论') || sectionText('## AI 探索回应') || fallbackAnswerText()))
 const answerBlocks = computed(() => splitBlocks(answerText.value))
 const nextText = computed(() => sectionText('## 下一步') || fallbackNext())
 const questionText = computed(() => props.question || props.result?.question || '正在从你的本地记忆里组织这个问题。')
@@ -253,6 +263,26 @@ const evidenceSummaryChips = computed<SummaryChip[]>(() => {
     chips.push({ label: `${aiInferences.value.length} 条 AI 推断`, tone: 'tone-ai' })
   }
   return chips
+})
+const currentTraceStage = computed(() => {
+  const error = props.stages.find((stage) => stage.status === 'error')
+  const active = props.stages.find((stage) => stage.status === 'active')
+  const done = [...props.stages].reverse().find((stage) => stage.status === 'done')
+  return error || active || done || props.stages[0] || null
+})
+const traceStatus = computed(() => currentTraceStage.value?.status || 'pending')
+const traceTitle = computed(() => {
+  if (!currentTraceStage.value) return '准备找回'
+  if (!props.busy && !props.stages.some((stage) => stage.status === 'error')) return '找回已完成'
+  return currentTraceStage.value.label
+})
+const traceDetail = computed(() => {
+  const stage = currentTraceStage.value
+  if (!stage) return '正在准备本地证据。'
+  if (!props.busy && !props.stages.some((item) => item.status === 'error')) {
+    return evidenceCompactSummary.value ? `证据链已整理：${evidenceCompactSummary.value}` : '证据链在下方。'
+  }
+  return stage.detail || stageLabel(stage.status)
 })
 
 watch(materials, () => {

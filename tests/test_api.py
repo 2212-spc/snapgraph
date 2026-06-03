@@ -35,7 +35,10 @@ def test_api_demo_exposes_sources_questions_and_graph_insights(tmp_path: Path, m
     assert questions
     question_detail = client.get(f"/api/questions/{questions[0]['id']}")
     assert question_detail.status_code == 200
-    assert "## Question" in question_detail.json()["markdown"]
+    detail = question_detail.json()
+    assert "## Question" in detail["markdown"]
+    assert detail["answer"]
+    assert detail["answer_heading"] == "Answer"
 
 
 def test_api_ask_save_flag_controls_question_writeback(tmp_path: Path, monkeypatch) -> None:
@@ -79,6 +82,7 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
     assert response.status_code == 200
     text = response.json()["text"]
     for heading in [
+        "## 结论",
         "## 找回的原话",
         "## 相关材料",
         "## 连接路径",
@@ -88,6 +92,78 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
         "## 检索诊断",
     ]:
         assert heading in text
+    assert text.index("## 结论") < text.index("## 找回的原话")
+
+
+def test_api_ask_accepts_current_batch_context_source_ids(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post(
+        "/api/ingest",
+        files={"file": ("old-noise.md", b"# Old noise\n\narchitecture memory evidence graph retrieval " * 100, "text/markdown")},
+        data={"why": "Older global background, not the current upload batch."},
+    )
+    first = client.post(
+        "/api/ingest",
+        files={"file": ("batch-receipt.md", b"# Batch receipt\n\nThe current batch needs a receipt and follow-up action.", "text/markdown")},
+        data={"why": "This batch tests upload receipt."},
+    ).json()
+    second = client.post(
+        "/api/ingest",
+        files={"file": ("batch-evidence.md", b"# Batch evidence\n\nThe answer should lead with a conclusion and then evidence.", "text/markdown")},
+        data={"why": "This batch tests answer-first evidence."},
+    ).json()
+
+    response = client.post(
+        "/api/ask",
+        json={
+            "question": "结合刚才上传的这批材料，我们下一步应该完善什么？",
+            "space_id": "all",
+            "save": False,
+            "context_source_ids": [first["source_id"], second["source_id"]],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [context["source_id"] for context in payload["contexts"][:2]] == [
+        first["source_id"],
+        second["source_id"],
+    ]
+    assert payload["diagnostics"]["pinned_contexts"] == 2
+    assert "current batch context" in " ".join(payload["diagnostics"]["top_candidate_reasons"])
+
+
+def test_api_ask_stream_accepts_current_batch_context_source_ids(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    first = client.post(
+        "/api/ingest",
+        files={"file": ("stream-batch-a.md", b"# Stream batch A\n\nCurrent batch stream evidence.", "text/markdown")},
+        data={"why": "This stream batch source should be pinned."},
+    ).json()
+    second = client.post(
+        "/api/ingest",
+        files={"file": ("stream-batch-b.md", b"# Stream batch B\n\nCurrent batch stream conclusion.", "text/markdown")},
+        data={"why": "This stream batch source should also be pinned."},
+    ).json()
+
+    response = client.post(
+        "/api/ask/stream",
+        json={
+            "question": "结合刚才上传的这批材料，总结一下。",
+            "space_id": "all",
+            "save": False,
+            "context_source_ids": [first["source_id"], second["source_id"]],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "event: focus" in body
+    assert '"pinned_contexts": 2' in body
+    assert "Stream batch A" in body
+    assert "Stream batch B" in body
 
 
 def test_api_ask_stream_emits_agent_stages_and_final_answer(tmp_path: Path, monkeypatch) -> None:

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SnapGraph Mobile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400;1,600&family=Inter:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{--ink:#14161A;--ink2:#2A323D;--paper:#FBF8F1;--paper2:#F5F1E8;--cream:#EFE9DA;--line:#E0D8C5;--lines:#ECE5D2;--amber:#B88A4A;--amberd:#8C6A38;--ambers:#E8D5B0;--ambert:rgba(184,138,74,.08);--rust:#A8493D;--moss:#6B7B5A;--txt:#1F232B;--txtm:#5C5447;--txtf:#9C907B;--txtg:#C0B5A0;--cn:"PingFang SC",sans-serif;--se:"Noto Serif SC",serif;--en:"Crimson Text",Georgia,serif;--mo:"SF Mono",monospace}
+html,body{background:#1A1A1A;height:100%;overflow:hidden;font-family:var(--cn);-webkit-font-smoothing:antialiased}
+button,textarea,input{font-family:inherit;-webkit-appearance:none;border:0;background:0;cursor:pointer}
+::selection{background:rgba(184,138,74,.2)}
+
+.frame{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:393px;height:852px;background:var(--paper);border-radius:44px;overflow:hidden;box-shadow:0 0 0 10px #1a1a1a,0 0 0 12px #333,0 40px 80px rgba(0,0,0,.5);display:flex;flex-direction:column}
+.frame::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:32px;background:#1a1a1a;border-radius:0 0 18px 18px;z-index:100}
+.sbar{height:54px;padding:0 28px;display:flex;align-items:flex-end;justify-content:space-between;padding-bottom:8px;flex-shrink:0}
+.sbar .time{font:700 15px var(--cn);color:var(--txt)}
+.sbar .icons{font-size:11px;color:var(--txtm)}
+
+.ct{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+.sc{display:none;min-height:100%}.sc.on{display:flex;flex-direction:column}
+
+.bnav{height:82px;padding:0 0 20px;display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--lines);background:rgba(251,248,241,.94);backdrop-filter:blur(16px);flex-shrink:0}
+.bnav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--txtg);font-size:10px;font-weight:600;letter-spacing:.03em;transition:color .15s}
+.bnav button.on{color:var(--amberd)}
+.bnav button svg{width:22px;height:22px;stroke:currentColor;stroke-width:1.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* shared */
+.bt{display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--txtm);padding:9px 16px;font-size:13px;font-weight:600;letter-spacing:.02em}
+.bt:active{transform:scale(.96);background:var(--paper2)}
+.bt-p{background:var(--ink);border-color:var(--ink);color:var(--paper)}.bt-p:active{background:var(--ink2)}
+.bt-a{background:var(--ink);border-color:var(--ink);color:var(--amber);font-weight:700;letter-spacing:.05em}.bt-a:active{background:var(--ink2)}
+.bt-full{width:100%}
+.tg{display:inline-block;padding:3px 9px;border-radius:100px;font-size:10px;font-weight:700;letter-spacing:.02em}
+.tg-g{background:rgba(107,123,90,.1);color:var(--moss)}.tg-r{background:rgba(168,73,61,.08);color:var(--rust)}.tg-a{background:var(--ambert);color:var(--amberd)}
+
+/* ═══ HOME ═══ */
+.home{flex:1;display:flex;flex-direction:column;padding:0 28px}
+.home-top{padding:8px 0;display:flex;align-items:center;justify-content:space-between}
+.home-brand{font:italic 600 18px/1 var(--en);color:var(--ink)}.home-brand::after{content:'';display:block;width:14px;height:2px;background:var(--amber);margin-top:3px}
+.home-av{width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--amber);display:grid;place-items:center;font:600 12px var(--se)}
+.home-main{flex:1;display:flex;flex-direction:column;justify-content:center;padding-bottom:20px}
+.greeting{font:italic 500 13px/1.4 var(--se);color:var(--txtf);letter-spacing:.05em;text-align:center;margin-bottom:6px}
+.title{font:500 22px/1.35 var(--se);color:var(--txt);text-align:center;letter-spacing:.06em;margin-bottom:22px}
+.inbox{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px 14px;box-shadow:0 1px 2px rgba(20,22,26,.04),0 4px 20px rgba(20,22,26,.04);transition:all .2s}
+.inbox:focus-within{border-color:var(--amber);box-shadow:0 0 0 4px var(--ambert),0 4px 20px rgba(20,22,26,.04)}
+.inbox textarea{width:100%;border:0;outline:0;background:0;font:500 16px/1.7 var(--se);color:var(--txt);resize:none;min-height:28px}
+.inbox textarea::placeholder{color:var(--txtg);font-style:italic}
+.inbox-foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px dashed var(--lines)}
+.inbox-hint{font:italic 11px/1.3 var(--se);color:var(--txtf)}
+.inbox-go{background:var(--ink);color:var(--paper);border:0;padding:7px 14px;font-size:12px;border-radius:6px;font-weight:600;letter-spacing:.08em}
+.inbox-go:active{background:var(--ink2)}
+/* scope selector */
+.scope{display:flex;align-items:center;gap:4px;margin-top:8px;padding:6px 10px;border:1px solid var(--lines);border-radius:8px;background:var(--paper2);font-size:11px;color:var(--txtm)}
+.scope select{border:0;background:0;font:600 11px var(--cn);color:var(--amberd);outline:0;-webkit-appearance:none;padding-right:2px}
+.scope .dot{width:5px;height:5px;border-radius:50%;background:var(--moss)}
+/* chips */
+.chips{display:flex;flex-direction:column;gap:6px;margin-top:16px}
+.chip{border:1px solid var(--line);border-radius:10px;padding:12px 16px;font:italic 14px/1.5 var(--se);color:var(--txtm);text-align:left;background:rgba(255,255,255,.4);transition:all .12s}
+.chip::before{content:'「';color:var(--ambers)}.chip::after{content:'」';color:var(--ambers)}
+.chip:active{border-color:var(--amber);background:var(--ambert)}
+/* alert */
+.alert{margin-top:18px;padding:12px 14px;border:1px solid rgba(168,73,61,.12);border-radius:10px;background:rgba(168,73,61,.03);display:flex;gap:8px;align-items:start}
+.alert .ico{font-size:14px;padding-top:1px}
+.alert .body{flex:1;font-size:12px;color:var(--txtm);line-height:1.55}
+.alert b{color:var(--txt);font-weight:600}
+.alert .link{color:var(--amberd);font-weight:600;font-size:11px;margin-top:4px;display:inline-block}
+/* recent */
+.recent{padding:18px 0 8px}
+.recent .lbl{font-size:9px;font-weight:600;color:var(--txtf);letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px}
+.ri{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--lines)}
+.ri:last-child{border:0}
+.ri .t{font:500 10px var(--mo);color:var(--txtg);min-width:34px}
+.ri .n{flex:1;font-size:13px;font-weight:500;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ri .tp{font:600 9px var(--mo);color:var(--txtf);padding:2px 6px;background:var(--paper2);border-radius:3px;letter-spacing:.04em}
+
+/* ═══ RESULT ═══ */
+.res{padding:0 28px 28px}
+.res-top{padding:8px 0 10px}
+.res-back{font:600 13px var(--cn);color:var(--amberd);letter-spacing:.03em}
+.res-q{font:500 14px/1.55 var(--se);color:var(--txt);padding:10px 14px;background:var(--paper2);border-radius:10px;border:1px solid var(--lines);margin-bottom:12px;letter-spacing:.02em}
+/* artifact */
+.art{position:relative;border-radius:12px;padding:16px 18px 16px 20px;margin:10px 0;background:linear-gradient(135deg,#FFFFFF 40%,#F8F4EB);border:1px solid rgba(107,123,90,.12)}
+.art::before{content:'';position:absolute;left:0;top:12px;bottom:12px;width:3px;background:var(--moss);border-radius:0 2px 2px 0}
+.art .src{font-size:11px;color:var(--txtf);margin-bottom:6px}.art .src b{color:var(--txt);font-weight:600}
+.art .q{font:600 15px/1.85 var(--se);color:var(--txt);letter-spacing:.01em}
+.art .foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:6px;flex-wrap:wrap}
+.art .open{display:flex;align-items:center;gap:4px;background:var(--ink);color:var(--amber);border:0;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;letter-spacing:.05em}
+.art .open:active{background:var(--ink2)}
+/* ai */
+.ai-txt{font-size:14px;color:var(--txtm);line-height:1.8;margin:12px 0;letter-spacing:.01em}
+.ai-txt p{margin-bottom:5px}.ai-txt b{color:var(--txt)}
+/* counter */
+.ctr{position:relative;border-radius:10px;padding:14px 16px 14px 20px;margin:10px 0;background:linear-gradient(135deg,#FFFFFF 40%,#F8EDE5);border:1px solid rgba(168,73,61,.1)}
+.ctr::before{content:'';position:absolute;left:0;top:12px;bottom:12px;width:3px;background:var(--rust);border-radius:0 2px 2px 0}
+.ctr .label{font-size:12px;font-weight:700;color:var(--rust);margin-bottom:3px}
+.ctr p{font-size:13px;color:var(--txtm);line-height:1.6}.ctr b{color:var(--txt)}
+/* actions */
+.acts{display:grid;gap:6px;margin:10px 0}
+.acts2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.jg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:10px 0}
+.jg3 .bt{padding:10px 6px;font-size:12px}
+/* follow */
+.follow{border-top:1px dashed var(--lines);padding-top:14px;margin-top:16px}
+.follow input{width:100%;border:1px solid var(--line);border-radius:10px;background:#fff;padding:12px 16px;font:500 14px var(--se);color:var(--txt);outline:0}
+.follow input::placeholder{color:var(--txtg);font-style:italic}
+.follow input:focus{border-color:var(--amber);box-shadow:0 0 0 3px var(--ambert)}
+/* nomatch */
+.nomatch{text-align:center;padding:32px 8px}
+.nomatch h3{font:600 16px/1.35 var(--se);color:var(--txt);letter-spacing:.04em;margin-bottom:4px}
+.nomatch p{font:italic 13px/1.6 var(--se);color:var(--txtf);margin-bottom:16px}
+
+/* ═══ SPACES ═══ */
+.spaces{padding:0 28px 20px}
+.sp-top{padding:8px 0 4px}
+.sp-top h1{font:700 20px/1.3 var(--se);letter-spacing:.04em}
+.sp-top p{font:italic 12px var(--se);color:var(--txtf);margin-top:2px}
+.sp-card{border:1px solid var(--line);border-radius:12px;background:#fff;padding:14px 16px;margin-top:8px}
+.sp-card:active{box-shadow:0 3px 12px rgba(20,22,26,.06)}
+.sp-card .bar{height:3px;border-radius:2px;margin-bottom:8px}
+.sp-card h3{font:700 15px/1.3 var(--se);margin-bottom:2px;letter-spacing:.02em}
+.sp-card p{font-size:11px;color:var(--txtm);margin-bottom:6px}
+.sp-card .sts{display:flex;flex-wrap:wrap;gap:4px}
+.sp-card .sts span{font:600 10px var(--cn);color:var(--txtf);background:var(--paper2);padding:3px 8px;border-radius:100px}
+.sp-card .sts b{color:var(--txt)}
+.sp-card .health{margin-top:6px;font-size:11px;font-weight:600}
+.sp-inbox{border-style:dashed;border-color:var(--ambers)}
+.sp-new{border:2px dashed var(--line);background:0;padding:16px;text-align:center;color:var(--txtg);font:600 13px var(--cn);border-radius:12px;margin-top:8px;letter-spacing:.06em}
+.sp-new:active{border-color:var(--amber);color:var(--amberd)}
+
+/* ═══ SAVE SHEET ═══ */
+.sh-bg{display:none;position:absolute;inset:0;z-index:60;background:rgba(20,22,26,.2);border-radius:44px;overflow:hidden}
+.sh-bg.on{display:block}
+.sh{position:absolute;bottom:0;left:0;right:0;background:var(--paper);border-radius:20px 20px 0 0;padding:20px 28px 32px;box-shadow:0 -8px 32px rgba(20,22,26,.1);transform:translateY(100%);transition:transform .25s ease}
+.sh-bg.on .sh{transform:translateY(0)}
+.sh .handle{width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px}
+.sh h3{font:700 16px/1.3 var(--se);margin-bottom:10px;letter-spacing:.03em}
+.sh .src{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--paper2);border-radius:8px;margin-bottom:12px}
+.sh .src-ico{width:24px;height:30px;background:#fff;border:1px solid var(--line);border-radius:2px;display:grid;place-items:end center;padding-bottom:2px;font:600 7px var(--mo);color:var(--rust);flex-shrink:0}
+.sh .src b{flex:1;font:500 13px var(--cn);color:var(--txt)}
+.sh .src .ok{font:600 10px var(--cn);color:var(--moss);letter-spacing:.04em}
+.sh label{display:block;font-size:10px;color:var(--txtf);font-weight:600;letter-spacing:.15em;text-transform:uppercase;margin-bottom:5px}
+.sh textarea{width:100%;min-height:56px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px 14px;font:500 14px/1.7 var(--se);color:var(--txt);outline:0;resize:none}
+.sh textarea::placeholder{color:var(--txtg);font-style:italic}
+.sh textarea:focus{border-color:var(--amber);box-shadow:0 0 0 3px var(--ambert)}
+.sh .hint{font:italic 11px var(--se);color:var(--txtf);margin:3px 0 10px}
+.sh .stags{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.sh .stag{border:1px solid var(--line);border-radius:100px;padding:5px 12px;font:500 12px var(--cn);color:var(--txtm);letter-spacing:.02em}
+.sh .stag.on{border-color:var(--amber);color:var(--amberd);background:var(--ambert)}
+.sh .stag:active{border-color:var(--amber)}
+.sh .conn{border:1px solid rgba(107,123,90,.15);border-radius:8px;background:linear-gradient(135deg,#fff 40%,#F0F4EC);padding:10px 12px;margin:10px 0;font-size:12px;color:var(--txtm);line-height:1.5}
+.sh .conn b{color:var(--txt)}.sh .conn .ins{margin-top:5px;padding:5px 8px;border-left:2px solid var(--amber);background:var(--ambert);border-radius:0 5px 5px 0;font-size:11px;color:var(--txt)}
+.sh .btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="frame">
+<div class="sbar"><span class="time">9:41</span><span class="icons">● ● ●</span></div>
+<div class="ct">
+
+<!-- HOME -->
+<div class="sc on" id="s-home">
+<div class="home">
+<div class="home-top"><div class="home-brand">SnapGraph</div><div class="home-av">林</div></div>
+<div class="home-main">
+<p class="greeting">早安，小林。</p>
+<h1 class="title">问 问 过 去 的 你</h1>
+<div class="inbox">
+<textarea placeholder="不用记得关键词，大致问问就好" id="qi" rows="1"></textarea>
+<div class="scope"><span class="dot"></span>范围：<select id="scope-sel"><option>全部材料</option><option>SnapGraph 项目</option><option>AI Agent 调研</option><option>比赛策划</option></select></div>
+<div class="inbox-foot">
+<span class="inbox-hint">本地检索 · AI 默默帮你匹配</span>
+<button class="inbox-go" onclick="doQ()">找 回</button>
+</div>
+</div>
+<div class="chips">
+<button class="chip" onclick="ask(0)">我之前为什么觉得这个方向重要？</button>
+<button class="chip" onclick="ask(1)">我当时为什么不做协作编辑？</button>
+<button class="chip" onclick="ask(2)">那篇关于记忆分层的论文叫什么</button>
+</div>
+<div class="alert" onclick="ask(1)">
+<span class="ico">⚠</span>
+<div class="body"><b>「不做协作编辑」</b>这个判断有新的反面证据——上周 3 位用户提到希望有协作。<br><span class="link">查看详情 →</span></div>
+</div>
+</div>
+<div class="recent">
+<div class="lbl">最近保存</div>
+<div class="ri"><span class="t">1h前</span><span class="n">meeting_notes.md</span><span class="tp">MD</span></div>
+<div class="ri"><span class="t">2周前</span><span class="n">note_snapgraph_idea.md</span><span class="tp">MD</span></div>
+<div class="ri"><span class="t">3周前</span><span class="n">A Survey on LLM-based Agents</span><span class="tp">PDF</span></div>
+</div>
+</div>
+</div>
+
+<!-- RESULT A -->
+<div class="sc" id="s-ra">
+<div class="res">
+<div class="res-top"><button class="res-back" onclick="goHome()">← 返回</button></div>
+<div class="res-q" id="ra-q"></div>
+<div style="margin-bottom:6px"><span class="tg tg-g">找到你的原话</span><span style="font:italic 10px var(--se);color:var(--txtf);margin-left:6px">312 条材料中</span></div>
+<div class="art">
+<div class="src">📄 <b>note_snapgraph_idea.md</b> · 两周前，深夜</div>
+<p class="q">「普通聊天只给答案，但它不会保存你为什么相信这个答案。SnapGraph 真正要做的不是搜索，而是把判断和证据一起留下来。」</p>
+<div class="foot"><span class="tg tg-g">你的原话</span><button class="open" onclick="alert('打开 note_snapgraph_idea.md')">打开原文 ↗</button></div>
+</div>
+<div class="ai-txt">
+<p>你在三周前的会议记录里也说过类似的话——「让用户找回自己说过的话，而不是让 AI 替他重新说一遍」。</p>
+<p>核心判断很稳定：SnapGraph 的价值在于<b>还原判断和理由</b>，不在于比 ChatGPT 更聪明。</p>
+</div>
+<div class="art">
+<div class="src">📄 <b>meeting_research_plan.md</b> · 三周前</div>
+<p class="q">「如果只是做搜索，用户会直接问 ChatGPT。我们的价值是让用户找回自己说过的话。」</p>
+<div class="foot"><span class="tg tg-g">你的原话</span><button class="open" onclick="alert('打开 meeting_research_plan.md')">打开原文 ↗</button></div>
+</div>
+<div class="ai-txt"><p>另外，你在 11 份材料里反复用了「找回当时的那个自己」这个表达。如果保存的不是「判断」而是「那个时刻的你」，这可能是更深的产品脉络。要沿着这个方向聊吗？</p></div>
+<div class="acts2">
+<button class="bt" onclick="alert('展示 11 份材料')">看这 11 份</button>
+<button class="bt" onclick="alert('导出 Markdown')">导出证据包</button>
+</div>
+<div class="follow"><input placeholder="继续问……" onkeydown="if(event.key==='Enter')alert('继续对话')"></div>
+</div>
+</div>
+
+<!-- RESULT B -->
+<div class="sc" id="s-rb">
+<div class="res">
+<div class="res-top"><button class="res-back" onclick="goHome()">← 返回</button></div>
+<div class="res-q" id="rb-q"></div>
+<div style="margin-bottom:6px"><span class="tg tg-g">找到原话</span><span class="tg tg-r" style="margin-left:4px">⚠ 反证</span></div>
+<div class="art">
+<div class="src">📄 <b>meeting_product_decision.md</b> · 三个月前</div>
+<p class="q">「不做协作编辑。6/8 个用户只需要导出。先把核心做到极致。」</p>
+<div class="foot"><span class="tg tg-g">你的原话</span><button class="open" onclick="alert('打开原文')">打开原文 ↗</button></div>
+</div>
+<div class="ctr">
+<div class="label">⚠ 新材料可能挑战此判断</div>
+<p><b>user_feedback_round2.md</b> 里 3 位用户提到希望有协作功能。</p>
+<div style="margin-top:8px"><button class="open" onclick="alert('打开新材料')" style="font-size:12px;padding:8px 14px">查看新材料 ↗</button></div>
+</div>
+<div class="ai-txt"><p>这个旧判断现在还成立吗？</p></div>
+<div class="jg3" id="jg"><button class="bt" onclick="jgR('仍然有效')">有效</button><button class="bt" onclick="jgR('需复查')">复查</button><button class="bt" style="color:var(--rust);border-color:rgba(168,73,61,.2)" onclick="jgR('已过时')">过时</button></div>
+</div>
+</div>
+
+<!-- RESULT C -->
+<div class="sc" id="s-rc">
+<div class="res">
+<div class="res-top"><button class="res-back" onclick="goHome()">← 返回</button></div>
+<div class="res-q" id="rc-q"></div>
+<div class="nomatch">
+<h3>没有找到可靠证据</h3>
+<p>已扫描 312 份材料。没有达到阈值，不编造答案。</p>
+<div class="acts">
+<button class="bt bt-full" onclick="goHome()">换个问法</button>
+<button class="bt bt-full bt-p" onclick="alert('AI 探索模式')">用 AI 聊，标明无证据</button>
+<button class="bt bt-full" onclick="openSh()">保存新材料</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- SPACES -->
+<div class="sc" id="s-sp">
+<div class="spaces">
+<div class="sp-top"><h1>记忆空间</h1><p>选一个空间，对话时 AI 只看这个项目的材料</p></div>
+<div class="sp-card" onclick="pickSp('SnapGraph 项目')"><div class="bar" style="background:var(--moss)"></div><h3>SnapGraph 项目</h3><p>产品设计 · 用户研究 · 技术方案</p><div class="sts"><span><b>23</b> 材料</span><span><b>8</b> 判断</span></div><div class="health" style="color:var(--amberd)">⚠ 1 个判断被新证据挑战</div></div>
+<div class="sp-card" onclick="pickSp('AI Agent 调研')"><div class="bar" style="background:var(--amber)"></div><h3>AI Agent 调研</h3><p>论文 · 框架对比 · 选型</p><div class="sts"><span><b>12</b> 材料</span><span><b>3</b> 判断</span></div><div class="health" style="color:var(--moss)">✓ 判断稳定</div></div>
+<div class="sp-card" onclick="pickSp('比赛策划')"><div class="bar" style="background:var(--rust)"></div><h3>比赛策划</h3><p>PPT · 故事线 · 演示</p><div class="sts"><span><b>8</b> 材料</span><span><b>2</b> 判断</span></div><div class="health" style="color:var(--moss)">✓ 稳定</div></div>
+<div class="sp-card sp-inbox" onclick="alert('收件箱')"><div class="bar" style="background:var(--ambers)"></div><h3>收件箱</h3><p>4 份待归类</p></div>
+<button class="sp-new" onclick="alert('创建新空间')">+ 新 空 间</button>
+</div>
+</div>
+
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bnav">
+<button class="on" id="t0" onclick="goHome()"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>对话</button>
+<button id="t1" onclick="goSp()"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>空间</button>
+<button onclick="openSh()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>保存</button>
+</nav>
+
+<!-- SAVE SHEET -->
+<div class="sh-bg" id="sh" onclick="if(event.target===this)closeSh()">
+<div class="sh">
+<div class="handle"></div>
+<h3>保存为可找回的记忆</h3>
+<div class="src"><div class="src-ico">PDF</div><b>A Survey on LLM Agents</b><span class="ok">已备份</span></div>
+<label>你想记住什么想法</label>
+<textarea placeholder="给将来的你写一句。"></textarea>
+<p class="hint">留空也行。系统不替你写。</p>
+<label style="margin-bottom:4px">保存到</label>
+<div class="stags">
+<button class="stag on" onclick="mTg(this)">SnapGraph 项目</button>
+<button class="stag" onclick="mTg(this)">AI 调研</button>
+<button class="stag" onclick="mTg(this)">让 AI 判断</button>
+</div>
+<div class="conn" id="conn" style="display:none"><b>和你已有的 3 样东西相关：</b><br>· 你写的「保存判断 vs 知识」笔记<br>· meeting_notes 里的产品方向<br>· note_methodology 里的「知识可以重生」<div class="ins">⚡ 这篇论文的 memory 分类和你的「保存判断」想法可能互相支撑。</div></div>
+<div class="btns">
+<button class="bt bt-full" onclick="closeSh()">稍后</button>
+<button class="bt bt-full bt-p" onclick="doSave()">保存</button>
+</div>
+</div>
+</div>
+
+</div>
+<script>
+var QS=['我之前为什么觉得这个方向重要？','我当时为什么不做协作编辑？','那篇关于记忆分层的论文叫什么'],RS=['s-ra','s-rb','s-rc'],QD=['ra-q','rb-q','rc-q'];
+function show(id){document.querySelectorAll('.sc').forEach(s=>s.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelector('.ct').scrollTop=0}
+function tab(n){document.querySelectorAll('.bnav button').forEach(b=>b.classList.remove('on'));document.getElementById('t'+n).classList.add('on')}
+function goHome(){show('s-home');tab(0)}
+function goSp(){show('s-sp');tab(1)}
+function ask(i){show(RS[i]);tab(0);document.getElementById(QD[i]).textContent=QS[i]}
+function doQ(){var v=document.getElementById('qi').value.trim();if(!v)return;show('s-ra');tab(0);document.getElementById('ra-q').textContent=v}
+function pickSp(name){document.getElementById('scope-sel').value=name;goHome()}
+function openSh(){document.getElementById('sh').classList.add('on');document.getElementById('conn').style.display='none'}
+function closeSh(){document.getElementById('sh').classList.remove('on')}
+function doSave(){document.getElementById('conn').style.display='block';setTimeout(()=>{closeSh();alert('已保存。发现 3 条相关证据。')},1000)}
+function mTg(b){b.parentElement.querySelectorAll('.stag').forEach(t=>t.classList.remove('on'));b.classList.add('on')}
+function jgR(t){document.getElementById('jg').innerHTML='<p style="text-align:center;font:italic 600 13px var(--se);color:var(--moss)">✓ '+t+'</p>'}
+</script>
+</body>
+</html>

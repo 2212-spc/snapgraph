@@ -9,6 +9,7 @@ from .retrieval import retrieve_for_question
 from .workspace import Workspace
 
 ANSWER_ORIGINAL = "## 找回的原话"
+ANSWER_CONCLUSION = "## 结论"
 ANSWER_MATERIALS = "## 相关材料"
 ANSWER_PATHS = "## 连接路径"
 ANSWER_AI_EXPLORATION = "## AI 探索回应"
@@ -63,6 +64,11 @@ def save_answer(workspace: Workspace, answer: AnswerResult) -> QuestionPage:
 
 def ensure_answer_contract(text: str, retrieval: RetrievalResult, question: str = "") -> str:
     """Keep real provider answers auditable even when the model omits sections."""
+    if ANSWER_CONCLUSION not in text:
+        text = _prepend_conclusion_section(
+            text,
+            _contract_conclusion(retrieval, question=question),
+        )
     additions: list[str] = []
     if ANSWER_ORIGINAL not in text:
         additions.extend(
@@ -156,6 +162,9 @@ def render_answer(retrieval: RetrievalResult, question: str = "") -> str:
     return "\n".join(
         [
             "# 回答",
+            ANSWER_CONCLUSION,
+            _contract_conclusion(retrieval, question=question),
+            "",
             ANSWER_ORIGINAL,
             _contract_original_lines(retrieval, question=question),
             "",
@@ -187,6 +196,9 @@ def _render_no_answer(retrieval: RetrievalResult, question: str = "") -> str:
     return "\n".join(
         [
             "# 回答",
+            ANSWER_CONCLUSION,
+            "低置信度：还没有找到能支撑这个问题的本地材料。我不会把没有证据的猜测包装成你的记忆。",
+            "",
             ANSWER_ORIGINAL,
             "低置信度：没有找到匹配的用户原话或图谱路径。在缺少证据时，我不会推断保存原因。",
             "",
@@ -227,6 +239,33 @@ def _contract_original_lines(retrieval: RetrievalResult, question: str = "") -> 
             f"- `{context.title}`：{context.why_saved} ({context.why_saved_status})"
         )
         for context in contexts[:3]
+    )
+
+
+def _prepend_conclusion_section(text: str, conclusion: str) -> str:
+    section = f"{ANSWER_CONCLUSION}\n{conclusion.strip()}\n"
+    stripped = text.rstrip()
+    if stripped.startswith("# 回答"):
+        lines = stripped.splitlines()
+        return "\n".join([lines[0], section, *lines[1:]]).rstrip()
+    return "\n".join(["# 回答", section, stripped]).rstrip()
+
+
+def _contract_conclusion(retrieval: RetrievalResult, question: str = "") -> str:
+    if not retrieval.contexts:
+        return "没有足够本地证据回答这个问题；先补材料或换一个更贴近旧材料、保存理由、项目名的问法。"
+    primary = retrieval.contexts[0]
+    anchor = _best_user_anchor(retrieval.contexts, question=question)
+    titles = "、".join(_dedupe_titles(retrieval.contexts)[:3])
+    if retrieval.diagnostics.pinned_contexts:
+        return (
+            f"这次应优先围绕刚上传的 {retrieval.diagnostics.pinned_contexts} 份材料继续推进。"
+            f"最稳的起点是 {anchor}；先把这批材料的保存理由、证据链和下一步问题整理清楚，再扩展到旧图谱。"
+        )
+    project = primary.related_project or primary.space_name or "当前问题"
+    return (
+        f"这个问题最可靠的回答起点是 `{project}` 里的本地证据，而不是泛泛搜索。"
+        f"当前优先参考 {titles}；先恢复当时为什么保存，再用图谱连接判断它今天还能支撑什么。"
     )
 
 

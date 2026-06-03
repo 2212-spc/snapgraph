@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SnapGraph UI Concept Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;700;900&amp;family=Noto+Serif+SC:wght@600;700;900&amp;display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --page: #f3f0e8;
+        --paper: #fffdf7;
+        --paper-2: #e8efe8;
+        --ink: #171511;
+        --ink-soft: #554e45;
+        --muted: #7d7569;
+        --line: rgba(45, 37, 28, 0.14);
+        --line-strong: rgba(45, 37, 28, 0.24);
+        --teal: #126a63;
+        --teal-soft: #e7f3ed;
+        --blue: #2b5f95;
+        --blue-soft: #e9f0f8;
+        --rust: #a34832;
+        --rust-soft: #f5e4dc;
+        --gold: #b4892e;
+        --gold-soft: #fbf1d5;
+        --green: #2f6f5b;
+        --green-soft: #eaf6ef;
+        --amber: #9a6700;
+        --amber-soft: #fff4da;
+        --danger: #9e2f2b;
+        --danger-soft: #f7dfdc;
+        --shadow: 0 18px 50px rgba(52, 38, 18, 0.11), 0 1px 2px rgba(52, 38, 18, 0.06);
+        --shadow-soft: 0 8px 24px rgba(52, 38, 18, 0.07);
+        --serif: "Noto Serif SC", serif;
+        --sans: "Noto Sans SC", sans-serif;
+        --mono: "IBM Plex Mono", monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        min-height: 100%;
+        background:
+          linear-gradient(rgba(45, 37, 28, 0.022) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(45, 37, 28, 0.022) 1px, transparent 1px),
+          radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.86), transparent 26%),
+          linear-gradient(120deg, rgba(18, 106, 99, 0.08), transparent 34%),
+          var(--page);
+        background-size: 42px 42px, 42px 42px, auto, auto, auto;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        color: var(--ink);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      button,
+      textarea,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.56;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1,
+      h2,
+      h3 {
+        font-family: var(--serif);
+        letter-spacing: 0;
+        overflow-wrap: anywhere;
+      }
+
+      h1 {
+        font-size: clamp(2.2rem, 5vw, 4.9rem);
+        line-height: 0.98;
+        font-weight: 900;
+      }
+
+      h2 {
+        font-size: clamp(1.35rem, 2.45vw, 2.35rem);
+        line-height: 1.08;
+        font-weight: 900;
+      }
+
+      h3 {
+        font-size: clamp(1rem, 1.45vw, 1.35rem);
+        line-height: 1.18;
+        font-weight: 800;
+      }
+
+      p,
+      li {
+        font-size: clamp(0.88rem, 1vw, 1rem);
+        line-height: 1.55;
+        overflow-wrap: anywhere;
+      }
+
+      small {
+        font-size: 0.78rem;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 248px minmax(0, 1fr);
+        overflow-x: hidden;
+      }
+
+      .rail {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        padding: 24px 18px;
+        border-right: 1px solid rgba(255, 250, 240, 0.12);
+        background:
+          linear-gradient(180deg, rgba(255, 250, 240, 0.06), transparent 46%),
+          #181611;
+        backdrop-filter: blur(18px);
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        min-width: 0;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-mark {
+        width: 44px;
+        aspect-ratio: 1;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--serif);
+        font-weight: 900;
+        box-shadow: var(--shadow-soft);
+      }
+
+      .brand strong,
+      .brand span {
+        display: block;
+      }
+
+      .brand strong {
+        font-size: 1.03rem;
+        line-height: 1.1;
+        color: var(--paper);
+      }
+
+      .brand span {
+        color: rgba(255, 253, 247, 0.62);
+        font-size: 0.78rem;
+      }
+
+      .nav {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .nav button {
+        border: 1px solid transparent;
+        background: transparent;
+        color: rgba(255, 253, 247, 0.72);
+        border-radius: 8px;
+        min-height: 44px;
+        display: grid;
+        grid-template-columns: 26px 1fr auto;
+        align-items: center;
+        gap: 10px;
+        padding: 0 10px;
+        text-align: left;
+        font-weight: 760;
+        transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+      }
+
+      .nav button:hover {
+        background: rgba(255, 253, 247, 0.08);
+        border-color: rgba(255, 253, 247, 0.14);
+      }
+
+      .nav button.active {
+        background: var(--paper);
+        color: var(--ink);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .nav svg {
+        width: 19px;
+        height: 19px;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        fill: none;
+      }
+
+      .nav small {
+        color: inherit;
+        opacity: 0.62;
+        font-family: var(--mono);
+      }
+
+      .rail-card {
+        margin-top: auto;
+        border: 1px solid rgba(255, 253, 247, 0.16);
+        border-radius: 8px;
+        background: rgba(255, 253, 247, 0.08);
+        padding: 14px;
+        box-shadow: var(--shadow-soft);
+        color: var(--paper);
+      }
+
+      .rail-card strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .rail-card p {
+        color: rgba(255, 253, 247, 0.62);
+        font-size: 0.84rem;
+      }
+
+      .main {
+        min-width: 0;
+        max-width: 100vw;
+        overflow-x: hidden;
+        padding: 22px clamp(18px, 3vw, 46px) 38px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .crumb {
+        font-family: var(--mono);
+        font-size: 0.76rem;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+
+      .status-strip {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 30px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 250, 240, 0.72);
+        padding: 0 10px;
+        color: var(--ink-soft);
+        font-size: 0.82rem;
+        font-weight: 720;
+      }
+
+      .pill.user {
+        color: var(--green);
+        background: var(--green-soft);
+        border-color: rgba(47, 111, 91, 0.2);
+      }
+
+      .pill.ai {
+        color: var(--amber);
+        background: var(--amber-soft);
+        border-color: rgba(154, 103, 0, 0.2);
+      }
+
+      .pill.danger {
+        color: var(--danger);
+        background: var(--danger-soft);
+        border-color: rgba(158, 47, 43, 0.18);
+      }
+
+      .view {
+        display: none;
+      }
+
+      .view.active {
+        display: block;
+        min-width: 0;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 18px;
+        align-items: start;
+        min-width: 0;
+      }
+
+      .workspace > * {
+        min-width: 0;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        background: rgba(255, 250, 240, 0.76);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        min-width: 0;
+      }
+
+      .panel-head {
+        padding: 18px 20px 14px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .panel-head > * {
+        min-width: 0;
+      }
+
+      .panel-body {
+        padding: 20px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .tight {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .lede {
+        color: var(--ink-soft);
+        font-size: clamp(1rem, 1.35vw, 1.22rem);
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .label {
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+
+      .button-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .primary,
+      .secondary,
+      .ghost {
+        border: 1px solid var(--line);
+        min-height: 42px;
+        border-radius: 8px;
+        padding: 0 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-weight: 820;
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+      }
+
+      .primary {
+        background: var(--ink);
+        color: var(--paper);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .secondary {
+        background: var(--paper);
+        color: var(--ink);
+      }
+
+      .ghost {
+        background: transparent;
+        color: var(--ink-soft);
+      }
+
+      .primary:hover,
+      .secondary:hover,
+      .ghost:hover {
+        transform: translateY(-1px);
+      }
+
+      .question-box {
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background:
+          linear-gradient(rgba(255, 250, 240, 0.72), rgba(255, 250, 240, 0.72)),
+          linear-gradient(rgba(45, 37, 28, 0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(45, 37, 28, 0.04) 1px, transparent 1px);
+        background-size: auto, 34px 34px, 34px 34px;
+        padding: 16px;
+      }
+
+      textarea,
+      input,
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--ink);
+        padding: 12px 13px;
+        outline: none;
+        transition: border-color 160ms ease, box-shadow 160ms ease;
+      }
+
+      textarea {
+        min-height: 96px;
+        resize: vertical;
+      }
+
+      textarea:focus,
+      input:focus,
+      select:focus {
+        border-color: rgba(18, 106, 99, 0.44);
+        box-shadow: 0 0 0 4px rgba(18, 106, 99, 0.08);
+      }
+
+      .answer-card {
+        border-radius: 8px;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        padding: 18px;
+        box-shadow: var(--shadow-soft);
+        min-width: 0;
+      }
+
+      .answer-quote {
+        font-family: var(--serif);
+        font-size: clamp(1.3rem, 2.3vw, 2.2rem);
+        font-weight: 900;
+        line-height: 1.22;
+        margin: 8px 0 12px;
+        overflow-wrap: anywhere;
+      }
+
+      .source-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .source-card,
+      .mini-card,
+      .path-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.52);
+        padding: 13px;
+      }
+
+      .source-card strong,
+      .mini-card strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .source-card p,
+      .mini-card p,
+      .path-card p {
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .path {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .path span {
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        background: var(--paper);
+        padding: 7px 10px;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+      }
+
+      .path i {
+        color: var(--rust);
+        font-style: normal;
+        font-weight: 900;
+      }
+
+      .side-panel {
+        position: sticky;
+        top: 22px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .trust-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 250, 240, 0.82);
+        box-shadow: var(--shadow-soft);
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .trust-item {
+        display: grid;
+        grid-template-columns: 28px 1fr;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .trust-dot {
+        width: 28px;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: var(--paper);
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      .trust-dot.user {
+        background: var(--green);
+      }
+
+      .trust-dot.ai {
+        background: var(--amber);
+      }
+
+      .trust-dot.low {
+        background: var(--danger);
+      }
+
+      .trust-item strong {
+        display: block;
+        margin-bottom: 2px;
+      }
+
+      .trust-item p {
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .receipt {
+        background: var(--paper);
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        min-width: 0;
+      }
+
+      .receipt-top {
+        padding: 15px 16px 12px;
+        border-bottom: 1px dashed var(--line-strong);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .receipt-body {
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .receipt-row {
+        display: grid;
+        grid-template-columns: 98px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .receipt-row > span {
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 0.76rem;
+      }
+
+      .receipt-row p {
+        color: var(--ink-soft);
+        min-width: 0;
+      }
+
+      .collect-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
+        gap: 18px;
+      }
+
+      .drop-area {
+        min-height: 220px;
+        border: 1px dashed rgba(18, 106, 99, 0.34);
+        border-radius: 8px;
+        background: rgba(231, 243, 237, 0.46);
+        display: grid;
+        align-content: center;
+        justify-items: start;
+        gap: 10px;
+        padding: 18px;
+      }
+
+      .file-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .file-pills span {
+        border-radius: 999px;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        padding: 7px 10px;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
+      .space-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+        gap: 18px;
+      }
+
+      .space-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .space-card {
+        border: 1px solid var(--line);
+        border-left: 6px solid var(--space-color, var(--teal));
+        border-radius: 8px;
+        background: rgba(255, 250, 240, 0.76);
+        padding: 15px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .space-card.active-space {
+        box-shadow: var(--shadow);
+        background: var(--paper);
+      }
+
+      .graph-map {
+        min-height: 490px;
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background:
+          linear-gradient(rgba(45, 37, 28, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(45, 37, 28, 0.035) 1px, transparent 1px),
+          rgba(255, 250, 240, 0.7);
+        background-size: 34px 34px;
+        overflow: hidden;
+      }
+
+      .graph-map svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .map-node {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        background: var(--paper);
+        padding: 8px 11px;
+        box-shadow: var(--shadow-soft);
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        white-space: nowrap;
+      }
+
+      .review-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .review-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 250, 240, 0.76);
+        padding: 15px;
+      }
+
+      .review-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .mobile-tabs {
+        display: none;
+      }
+
+      @media (max-width: 1120px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .rail {
+          position: static;
+          height: auto;
+          flex-direction: row;
+          align-items: center;
+          padding: 14px 18px;
+        }
+
+        .nav {
+          display: flex;
+          overflow-x: auto;
+          flex: 1;
+          min-width: 0;
+          max-width: 100%;
+          scrollbar-width: none;
+        }
+
+        .nav::-webkit-scrollbar {
+          display: none;
+        }
+
+        .nav button {
+          min-width: max-content;
+        }
+
+        .rail-card {
+          display: none;
+        }
+
+        .workspace,
+        .collect-grid,
+        .space-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .side-panel {
+          position: static;
+        }
+      }
+
+      @media (max-width: 760px) {
+        h1 {
+          font-size: clamp(1.62rem, 8vw, 2.1rem);
+          line-height: 1.05;
+          word-break: break-all;
+        }
+
+        h2 {
+          font-size: clamp(1.35rem, 7.5vw, 2rem);
+          word-break: break-all;
+        }
+
+        .main {
+          padding: 18px 18px 32px;
+        }
+
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .status-strip {
+          justify-content: flex-start;
+        }
+
+        .source-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .receipt-row {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+
+        .review-item {
+          grid-template-columns: 1fr;
+        }
+
+        .panel-head {
+          flex-direction: column;
+        }
+
+        .panel-head h1 {
+          font-size: clamp(1.45rem, 6.6vw, 1.85rem);
+          line-height: 1.1;
+        }
+
+        .panel-body {
+          padding: 16px;
+        }
+
+        .answer-quote {
+          font-size: clamp(1rem, 4.8vw, 1.2rem);
+          word-break: break-all;
+        }
+
+        .rail {
+          align-items: flex-start;
+          flex-direction: column;
+          max-width: 100vw;
+          overflow: hidden;
+          width: 100vw;
+        }
+
+        .nav {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          flex: none;
+          max-width: min(354px, calc(100vw - 36px));
+          width: min(354px, calc(100vw - 36px));
+          gap: 6px;
+          overflow: hidden;
+        }
+
+        .nav button {
+          min-width: 0;
+          display: inline-flex;
+          padding: 0 6px;
+          justify-content: center;
+        }
+
+        .nav button span {
+          white-space: nowrap;
+        }
+
+        .nav small {
+          display: none;
+        }
+
+        .app,
+        .rail,
+        .main,
+        .view,
+        .workspace,
+        .panel,
+        .question-box,
+        .answer-card,
+        .receipt {
+          max-width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="rail">
+        <div class="brand">
+          <div class="brand-mark">Sg</div>
+          <div>
+            <strong>SnapGraph</strong>
+            <span>AI 认知记忆图谱</span>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="SnapGraph demo views">
+          <button class="active" data-view="recall">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+            <span>找回</span>
+            <small>01</small>
+          </button>
+          <button data-view="collect">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+            <span>收集</span>
+            <small>02</small>
+          </button>
+          <button data-view="spaces">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="3"></circle><circle cx="18" cy="7" r="3"></circle><circle cx="12" cy="18" r="3"></circle><path d="M8.6 8.9 10.8 15"></path><path d="m15.4 8.9-2.2 6.1"></path></svg>
+            <span>图谱</span>
+            <small>03</small>
+          </button>
+          <button data-view="review">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg>
+            <span>审计</span>
+            <small>04</small>
+          </button>
+        </nav>
+
+        <div class="rail-card">
+          <strong>设计立场</strong>
+          <p>AI 不假装是你。用户原话、AI 推断和低置信状态必须分得清。</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <div class="crumb">Local memory workspace</div>
+            <h2 id="viewTitle">找回一个过去的判断</h2>
+          </div>
+          <div class="status-strip">
+            <span class="pill user">user-stated 12</span>
+            <span class="pill ai">AI-inferred 5</span>
+            <span class="pill danger">needs review 2</span>
+          </div>
+        </header>
+
+        <section class="view active" id="recall">
+          <div class="workspace">
+            <div class="stack">
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="label">Recall command</div>
+                    <h1>问一个你曾经想过的问题。</h1>
+                  </div>
+                  <span class="pill">not web search</span>
+                </div>
+                <div class="panel-body stack">
+                  <div class="question-box tight">
+                    <label class="label" for="questionInput">模糊提问</label>
+                    <textarea id="questionInput">我之前为什么觉得这个方向重要？</textarea>
+                    <div class="button-row">
+                      <button class="primary" id="recallButton">找回判断</button>
+                      <button
+                        class="secondary quick-question"
+                        data-question="我之前为什么觉得截图不是核心？"
+                        data-answer="“截图只是入口，真正要留下的是截图背后的判断。”"
+                        data-source="来自：产品草稿"
+                      >
+                        截图不是核心
+                      </button>
+                      <button
+                        class="secondary quick-question"
+                        data-question="哪些旧材料支持 AI 不假装是你的设计？"
+                        data-answer="“我们的 AI 不假装是你。用户原话和 AI 推断必须分得清清楚楚。”"
+                        data-source="来自：设计理念"
+                      >
+                        AI 边界
+                      </button>
+                    </div>
+                  </div>
+
+                  <article class="answer-card" id="answerCard">
+                    <div class="label">找回的原话</div>
+                    <div class="answer-quote" id="answerQuote">“AI 不该替我思考，它应该帮我记得自己思考过。”</div>
+                    <div class="button-row">
+                      <span class="pill user">user-stated / 用户原话</span>
+                      <span class="pill" id="answerSource">来自：AIGC 策划材料</span>
+                    </div>
+                  </article>
+
+                  <div class="path-card tight">
+                    <div class="label">证据路径</div>
+                    <div class="path">
+                      <span>保存材料</span>
+                      <i>→</i>
+                      <span>用户原话</span>
+                      <i>→</i>
+                      <span>设计理念</span>
+                      <i>→</i>
+                      <span>下一步</span>
+                    </div>
+                  </div>
+
+                  <div class="source-grid">
+                    <article class="source-card">
+                      <strong>设计思维课件</strong>
+                      <p>从功能点转向产品概念，用故事板建立情绪闭环。</p>
+                    </article>
+                    <article class="source-card">
+                      <strong>比赛评分表</strong>
+                      <p>创新性与应用价值合计 80%，需要真实痛点和理念贯穿。</p>
+                    </article>
+                    <article class="source-card">
+                      <strong>SnapGraph demo</strong>
+                      <p>已有 user-stated、AI-inferred、证据路径和 lint 诊断。</p>
+                    </article>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <aside class="side-panel">
+              <section class="trust-card">
+                <div class="label">Trust boundary</div>
+                <div class="trust-item">
+                  <span class="trust-dot user">U</span>
+                  <div>
+                    <strong>用户原话优先</strong>
+                    <p>这是最高置信证据，回答先还给用户自己说过的话。</p>
+                  </div>
+                </div>
+                <div class="trust-item">
+                  <span class="trust-dot ai">AI</span>
+                  <div>
+                    <strong>AI 推断可见</strong>
+                    <p>系统可以推断，但必须标明不是用户原意。</p>
+                  </div>
+                </div>
+                <div class="trust-item">
+                  <span class="trust-dot low">?</span>
+                  <div>
+                    <strong>没证据不编造</strong>
+                    <p>低置信材料进入审计队列，而不是包装成确定记忆。</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="receipt">
+                <div class="receipt-top">
+                  <strong>思考回执</strong>
+                  <span class="pill user">user-stated</span>
+                </div>
+                <div class="receipt-body">
+                  <div class="receipt-row">
+                    <span>保存为</span>
+                    <p>AI 认知记忆图谱设计判断</p>
+                  </div>
+                  <div class="receipt-row">
+                    <span>为什么</span>
+                    <p>比赛里最稀缺的不是更自动的 AI，而是能保护用户判断来源的 AI。</p>
+                  </div>
+                  <div class="receipt-row">
+                    <span>open loop</span>
+                    <p>把“思考回执”做成第一眼就能理解的界面。</p>
+                  </div>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="collect">
+          <div class="collect-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="label">Capture</div>
+                  <h2>保存资料时，留下那一刻的判断。</h2>
+                </div>
+              </div>
+              <div class="panel-body stack">
+                <div class="drop-area">
+                  <h3>把资料放进来</h3>
+                  <p class="muted">论文、网页摘录、截图、AI 对话或一段临时想法。</p>
+                  <div class="file-pills">
+                    <span>aigc-score-table.pdf</span>
+                    <span>design-thinking-notes.md</span>
+                    <span>late-night-screenshot.png</span>
+                  </div>
+                </div>
+                <label class="tight">
+                  <span class="label">当时为什么觉得它值得留下？</span>
+                  <textarea id="whyInput">这份材料让我意识到，我们不能只讲知识管理，要讲 AI 时代人的判断如何被保存。</textarea>
+                </label>
+                <div class="button-row">
+                  <button class="primary" id="makeReceipt">生成思考回执</button>
+                  <button class="ghost">先放 Inbox</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="receipt" id="receiptPreview">
+              <div class="receipt-top">
+                <strong>思考回执预览</strong>
+                <span class="pill user">user-stated</span>
+              </div>
+              <div class="receipt-body">
+                <div class="receipt-row">
+                  <span>保存理由</span>
+                  <p id="receiptWhy">这份材料让我意识到，我们不能只讲知识管理，要讲 AI 时代人的判断如何被保存。</p>
+                </div>
+                <div class="receipt-row">
+                  <span>系统理解</span>
+                  <p>它支持 SnapGraph 的核心叙事：从保存资料转向保存判断来路。</p>
+                </div>
+                <div class="receipt-row">
+                  <span>进入图谱</span>
+                  <p>应用赛道策划 / 产品叙事 / 可信 AI 边界</p>
+                </div>
+                <div class="receipt-row">
+                  <span>建议连接</span>
+                  <p>设计理念、评分表、故事板、低置信审计</p>
+                </div>
+                <div class="receipt-row">
+                  <span>未来提问</span>
+                  <p>我为什么坚持“AI 不假装是你”？</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="spaces">
+          <div class="space-layout">
+            <section class="space-list">
+              <article class="space-card active-space" style="--space-color: var(--teal)">
+                <span class="label">记忆空间</span>
+                <h3>AIGC 作品策划</h3>
+                <p class="muted">13 份材料，21 个节点，4 个 open loops。</p>
+              </article>
+              <article class="space-card" style="--space-color: var(--rust)">
+                <span class="label">记忆空间</span>
+                <h3>可信 AI 边界</h3>
+                <p class="muted">user-stated 与 AI-inferred 的设计证据。</p>
+              </article>
+              <article class="space-card" style="--space-color: var(--blue)">
+                <span class="label">记忆空间</span>
+                <h3>产品视觉原型</h3>
+                <p class="muted">思考回执、证据路径、图谱空间。</p>
+              </article>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="label">Evidence graph</div>
+                  <h2>图谱不是主角，路径才是。</h2>
+                </div>
+                <span class="pill">advanced view</span>
+              </div>
+              <div class="panel-body">
+                <div class="graph-map">
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                    <line x1="18" y1="25" x2="45" y2="42" stroke="rgba(18,106,99,.34)" stroke-width=".8" />
+                    <line x1="45" y1="42" x2="76" y2="27" stroke="rgba(18,106,99,.34)" stroke-width=".8" />
+                    <line x1="45" y1="42" x2="68" y2="70" stroke="rgba(163,72,50,.34)" stroke-width=".8" />
+                    <line x1="22" y1="74" x2="45" y2="42" stroke="rgba(43,95,149,.32)" stroke-width=".8" />
+                    <line x1="76" y1="27" x2="80" y2="66" stroke="rgba(43,95,149,.28)" stroke-width=".8" />
+                  </svg>
+                  <span class="map-node" style="left:18%; top:25%;">评分表</span>
+                  <span class="map-node" style="left:45%; top:42%;">AI 不假装是你</span>
+                  <span class="map-node" style="left:76%; top:27%;">设计理念</span>
+                  <span class="map-node" style="left:68%; top:70%;">思考回执</span>
+                  <span class="map-node" style="left:22%; top:74%;">故事板</span>
+                  <span class="map-node" style="left:80%; top:66%;">前景评估</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="review">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="label">Evidence review</div>
+                <h2>低置信不是失败，是负责任的产品状态。</h2>
+              </div>
+              <span class="pill danger">2 needs review</span>
+            </div>
+            <div class="panel-body review-list">
+              <article class="review-item">
+                <div>
+                  <span class="pill ai">AI-inferred</span>
+                  <h3>“这张截图可能证明图谱是主界面。”</h3>
+                  <p class="muted">与当前设计理念冲突：图谱应作为高级审计视图，不是默认首页。</p>
+                </div>
+                <div class="review-actions">
+                  <button class="secondary">弱化</button>
+                  <button class="primary">改写</button>
+                </div>
+              </article>
+              <article class="review-item">
+                <div>
+                  <span class="pill ai">AI-inferred</span>
+                  <h3>“用户保存这份材料是为了提升效率。”</h3>
+                  <p class="muted">需要用户确认。当前故事更偏向保留判断来路，而不是单纯效率。</p>
+                </div>
+                <div class="review-actions">
+                  <button class="secondary">保留推断</button>
+                  <button class="primary">确认原话</button>
+                </div>
+              </article>
+              <article class="review-item">
+                <div>
+                  <span class="pill user">user-stated</span>
+                  <h3>“资料没有消失，消失的是资料成为想法的那一刻。”</h3>
+                  <p class="muted">高置信材料，可作为设计理念页的核心证据。</p>
+                </div>
+                <div class="review-actions">
+                  <button class="secondary">查看路径</button>
+                </div>
+              </article>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const titles = {
+        recall: "找回一个过去的判断",
+        collect: "保存资料成为想法的那一刻",
+        spaces: "让旧材料彼此连起来",
+        review: "AI 不假装是你",
+      };
+
+      const navButtons = Array.from(document.querySelectorAll(".nav button"));
+      const views = Array.from(document.querySelectorAll(".view"));
+      const viewTitle = document.getElementById("viewTitle");
+      const answerQuote = document.getElementById("answerQuote");
+      const answerSource = document.getElementById("answerSource");
+      const defaultRecall = {
+        answer: "“AI 不该替我思考，它应该帮我记得自己思考过。”",
+        source: "来自：AIGC 策划材料",
+      };
+
+      function showView(id) {
+        navButtons.forEach((button) => button.classList.toggle("active", button.dataset.view === id));
+        views.forEach((view) => view.classList.toggle("active", view.id === id));
+        viewTitle.textContent = titles[id] || "SnapGraph";
+      }
+
+      navButtons.forEach((button) => {
+        button.addEventListener("click", () => showView(button.dataset.view));
+      });
+
+      document.querySelectorAll(".quick-question").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.getElementById("questionInput").value = button.dataset.question;
+          answerQuote.textContent = button.dataset.answer || defaultRecall.answer;
+          answerSource.textContent = button.dataset.source || defaultRecall.source;
+          document.getElementById("answerCard").animate(
+            [
+              { transform: "translateY(0)", boxShadow: "var(--shadow-soft)" },
+              { transform: "translateY(-4px)", boxShadow: "var(--shadow)" },
+              { transform: "translateY(0)", boxShadow: "var(--shadow-soft)" },
+            ],
+            { duration: 420, easing: "ease-out" }
+          );
+        });
+      });
+
+      document.getElementById("recallButton").addEventListener("click", () => {
+        const question = document.getElementById("questionInput").value;
+        if (question.includes("截图")) {
+          answerQuote.textContent = "“截图只是入口，真正要留下的是截图背后的判断。”";
+          answerSource.textContent = "来自：产品草稿";
+        } else if (question.includes("边界") || question.includes("假装")) {
+          answerQuote.textContent = "“我们的 AI 不假装是你。用户原话和 AI 推断必须分得清清楚楚。”";
+          answerSource.textContent = "来自：设计理念";
+        } else {
+          answerQuote.textContent = defaultRecall.answer;
+          answerSource.textContent = defaultRecall.source;
+        }
+        document.getElementById("answerCard").animate(
+          [
+            { opacity: 0.72, transform: "scale(.985)" },
+            { opacity: 1, transform: "scale(1)" },
+          ],
+          { duration: 360, easing: "ease-out" }
+        );
+      });
+
+      document.getElementById("makeReceipt").addEventListener("click", () => {
+        const why = document.getElementById("whyInput").value.trim();
+        if (why) document.getElementById("receiptWhy").textContent = why;
+        document.getElementById("receiptPreview").animate(
+          [
+            { transform: "translateY(0)", boxShadow: "var(--shadow-soft)" },
+            { transform: "translateY(-6px)", boxShadow: "var(--shadow)" },
+            { transform: "translateY(0)", boxShadow: "var(--shadow)" },
+          ],
+          { duration: 520, easing: "ease-out" }
+        );
+      });
+
+      document.getElementById("whyInput").addEventListener("input", (event) => {
+        const why = event.target.value.trim();
+        document.getElementById("receiptWhy").textContent = why || "等待你写下这一刻为什么重要。";
+      });
+    </script>
+  </body>
+</html>

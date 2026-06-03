@@ -19,6 +19,7 @@ from .workspace import Workspace
 
 
 MIN_RETRIEVAL_SCORE = 0.001
+CURRENT_BATCH_SCORE = 12.0
 QUERY_STOPWORDS = {
     "我",
     "刚才",
@@ -56,9 +57,16 @@ def retrieve_for_question(
     workspace: Workspace,
     question: str,
     space_id: str | None = None,
+    context_source_ids: list[str] | None = None,
 ) -> RetrievalResult:
     retrieval_config = load_config(workspace).retrieval
     terms = _query_terms(question, retrieval_config.aliases)
+    pinned_source_ids = _normalize_context_source_ids(
+        workspace,
+        context_source_ids or [],
+        space_id,
+    )
+    pinned_order = {source_id: index for index, source_id in enumerate(pinned_source_ids)}
     keyword_scores, candidate_reasons = _keyword_source_scores(
         workspace,
         terms,
@@ -87,8 +95,10 @@ def retrieve_for_question(
     graph_edge_source_ids = _source_ids_from_edges(graph.get("edges", []), matched_node_ids)
     _add_scores(source_scores, graph_node_source_ids, retrieval_config.graph_node_weight)
     _add_scores(source_scores, graph_edge_source_ids, retrieval_config.graph_edge_weight)
+    _add_scores(source_scores, set(pinned_source_ids), CURRENT_BATCH_SCORE)
     _add_reasons(candidate_reasons, graph_node_source_ids, "near matched graph node")
     _add_reasons(candidate_reasons, graph_edge_source_ids, "evidence edge from matched graph node")
+    _add_reasons(candidate_reasons, set(pinned_source_ids), "current batch context")
     source_scores = _significant_scores(source_scores)
     candidate_reasons = {
         source_id: reasons
@@ -102,6 +112,7 @@ def retrieve_for_question(
         retrieval_config.max_source_pages,
         space_id=space_id,
         terms=terms,
+        pinned_order=pinned_order,
     )
     graph_paths = _graph_paths(graph, node_by_id, matched_node_ids, expanded_node_ids)
     diagnostics = RetrievalDiagnostics(
@@ -109,6 +120,7 @@ def retrieve_for_question(
         graph_node_hits=len(matched_node_ids),
         expanded_nodes=len(expanded_node_ids),
         source_pages_used=len(contexts),
+        pinned_contexts=sum(1 for context in contexts if context.source_id in pinned_order),
         user_stated_contexts=sum(
             1 for context in contexts if is_user_guided_status(context.why_saved_status)
         ),
@@ -270,6 +282,33 @@ def _filter_scores_to_space(
     return {source_id: score for source_id, score in source_scores.items() if source_id in allowed}
 
 
+def _normalize_context_source_ids(
+    workspace: Workspace,
+    source_ids: list[str],
+    space_id: str | None,
+) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for source_id in source_ids:
+        cleaned = str(source_id or "").strip()
+        if cleaned and cleaned not in seen:
+            ordered.append(cleaned)
+            seen.add(cleaned)
+    if not ordered:
+        return []
+
+    placeholders = ",".join("?" for _ in ordered)
+    query = f"SELECT id FROM sources WHERE id IN ({placeholders})"
+    params: list[str] = list(ordered)
+    if space_id and space_id != "all":
+        query += " AND graph_space_id = ?"
+        params.append(space_id)
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        rows = conn.execute(query, params).fetchall()
+    existing = {row[0] for row in rows}
+    return [source_id for source_id in ordered if source_id in existing]
+
+
 def _significant_scores(source_scores: dict[str, float]) -> dict[str, float]:
     return {
         source_id: score
@@ -285,6 +324,7 @@ def _load_contexts(
     *,
     space_id: str | None = None,
     terms: list[str] | None = None,
+    pinned_order: dict[str, int] | None = None,
 ) -> list[RetrievedContext]:
     if not source_scores:
         return []
@@ -354,9 +394,12 @@ def _load_contexts(
             )
         contexts.append((context, source_type or "", imported_at or ""))
     terms = terms or []
+    pinned_order = pinned_order or {}
     ranked = sorted(
         contexts,
         key=lambda item: (
+            0 if item[0].source_id in pinned_order else 1,
+            pinned_order.get(item[0].source_id, 9999),
             -_ranking_score(item[0], source_scores.get(item[0].source_id, 0), item[1], item[2], terms),
             -_imported_at_number(item[2]),
             item[0].title,
