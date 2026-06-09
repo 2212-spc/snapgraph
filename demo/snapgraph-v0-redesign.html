@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SnapGraph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--pg:#f7f5ef;--pp:#fffdfb;--wm:#f2ede3;--ik:#1a1815;--i2:#4d463e;--mu:#8a7f73;--ln:rgba(70,55,35,.08);--l2:rgba(70,55,35,.15);--gn:#2c6653;--gb:#e8f3ec;--gl:rgba(44,102,83,.18);--am:#8d5e00;--ab:#fff6e0;--al:rgba(141,94,0,.14);--bl:#2b5590;--bb:#eaf0f8;--rs:#7f4d2a;--rb:#fceee4;--rl:rgba(127,77,42,.14);--nv:#191714;--se:"Noto Serif SC",serif;--sa:Inter,-apple-system,sans-serif;--s1:0 1px 3px rgba(40,30,10,.04);--s2:0 3px 14px rgba(40,30,10,.06);--nw:50px}
+html{background:var(--pg)}body{color:var(--ik);font:13px/1.6 var(--sa);-webkit-font-smoothing:antialiased}
+button,textarea,input{font:inherit;border:0;background:0;cursor:pointer}::selection{background:rgba(44,102,83,.12)}
+.nav{position:fixed;top:0;left:0;bottom:0;width:var(--nw);z-index:50;background:var(--nv);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:2px}
+.bm{width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.07);display:grid;place-items:center;color:rgba(245,240,230,.75);font:900 10px/1 var(--se);margin-bottom:10px}
+.nb{position:relative;width:32px;height:32px;border-radius:7px;display:grid;place-items:center;color:rgba(245,240,230,.28);transition:all .12s}
+.nb:hover{background:rgba(245,240,230,.06);color:rgba(245,240,230,.55)}.nb.on{background:rgba(245,240,230,.08);color:rgba(245,240,230,.8)}
+.nb svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.nb .tp{display:none;position:absolute;left:calc(100% + 6px);top:50%;transform:translateY(-50%);background:#27241f;color:#ede8df;font:600 10px var(--sa);padding:3px 7px;border-radius:4px;white-space:nowrap;z-index:60}
+.nb:hover .tp{display:block}.ns{flex:1}
+.mn{margin-left:var(--nw);min-height:100vh}.vw{display:none}.vw.on{display:block}
+.bt{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--ln);border-radius:6px;background:var(--pp);color:var(--i2);padding:4px 9px;font-size:11px;font-weight:600;box-shadow:var(--s1);transition:transform .1s}
+.bt:hover{transform:translateY(-1px);box-shadow:var(--s2)}
+.bt-p{background:var(--ik);border-color:var(--ik);color:#f3efe5}
+.bt-go{background:var(--gn);border-color:var(--gn);color:#fff}
+.tg{display:inline-block;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700;line-height:1.4}
+.tg-g{background:var(--gb);color:var(--gn)}.tg-a{background:var(--ab);color:var(--am)}.tg-r{background:var(--rb);color:var(--rs)}.tg-x{background:var(--wm);color:var(--mu)}.tg-b{background:var(--bb);color:var(--bl)}
+.sec{font-size:9px;font-weight:700;color:var(--mu);letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+/* ═══ CONV ═══ */
+.cv{max-width:680px;margin:0 auto;padding:0 18px}
+.cv-home{min-height:calc(100vh - 20px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:10vh}
+.cv-home h1{font:900 clamp(1.3rem,2.2vw,1.55rem)/1.3 var(--se);text-align:center;margin-bottom:4px}
+.cv-home .sub{color:var(--i2);font-size:11.5px;text-align:center;margin-bottom:18px}
+.ib{width:100%;max-width:580px;border:1px solid var(--l2);border-radius:10px;background:var(--pp);box-shadow:var(--s2);padding:10px 12px}
+.ib textarea{width:100%;min-height:44px;border:0;outline:0;background:0;color:var(--ik);font:600 clamp(.86rem,1vw,.92rem)/1.7 var(--se);resize:none}
+.ib textarea::placeholder{color:rgba(138,127,115,.3)}
+.ib-f{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px;padding-top:4px;border-top:1px solid var(--ln)}
+.ib-s{display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--mu)}.ib-s .dot{width:4px;height:4px;border-radius:99px;background:var(--gn)}
+.eq{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin-top:12px;max-width:580px}
+.eq button{border:1px solid var(--ln);border-radius:99px;background:rgba(255,253,251,.4);color:var(--i2);padding:5px 11px;font-size:11px;transition:all .12s}
+.eq button:hover{border-color:var(--gl);background:var(--gb)}
+.cv-rec{margin-top:20px;width:100%;max-width:580px}
+.cv-rec h4{font-size:9px;font-weight:700;color:var(--mu);margin-bottom:4px;letter-spacing:.05em;text-transform:uppercase}
+.ri{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--ln);font-size:11px}.ri:last-child{border:0}.ri .t{color:var(--mu);font-size:9.5px;min-width:34px}.ri .n{color:var(--ik);font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thread{padding:16px 0 76px}.thread .ib{box-shadow:var(--s1);margin-bottom:10px}.thread .ib textarea{min-height:16px;font-size:.78rem}
+.u-msg{padding:7px 10px;background:var(--wm);border-radius:7px;font-size:12.5px;color:var(--ik);font-weight:500;margin-bottom:12px;border:1px solid var(--ln)}
+.a-msg{font-size:12.5px;color:var(--i2);line-height:1.78;margin-bottom:14px}.a-msg p{margin-bottom:5px}
+.art{position:relative;border-radius:8px;padding:12px 14px 12px 16px;margin:8px 0;background:linear-gradient(135deg,#faf8f2,#f0ece2);border:1px solid rgba(44,102,83,.1)}
+.art::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gn);border-radius:3px 0 0 3px}
+.art-h{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:5px;flex-wrap:wrap}
+.art-h .info{font-size:10.5px;color:var(--mu)}.art-h .info b{color:var(--ik);font-weight:600}
+.art-q{font:600 clamp(.84rem,1vw,.92rem)/1.78 var(--se);color:var(--ik)}
+.art-f{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-top:6px;flex-wrap:wrap}
+.ctr{position:relative;border-radius:8px;padding:10px 12px 10px 16px;margin:8px 0;background:linear-gradient(135deg,#fdfaf6,#f8efe5);border:1px solid rgba(127,77,42,.1)}
+.ctr::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--rs);border-radius:3px 0 0 3px}
+.ctr b{color:var(--rs);font-size:11px}.ctr p{color:var(--i2);font-size:12px;line-height:1.6;margin-top:2px}
+.acts{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0}
+.cv-bot{position:fixed;bottom:0;left:var(--nw);right:0;padding:5px 18px 8px;background:linear-gradient(transparent,var(--pg) 25%)}
+.cv-bot-in{max-width:580px;margin:0 auto}
+.cv-bot input{width:100%;border:1px solid var(--l2);border-radius:8px;background:var(--pp);padding:7px 11px;font:500 12px var(--sa);outline:0;box-shadow:var(--s2)}
+.cv-bot input:focus{border-color:rgba(44,102,83,.2);box-shadow:0 0 0 2px rgba(44,102,83,.04),var(--s2)}
+.nomatch{text-align:center;padding:24px 0}.nomatch h3{font:700 .9rem/1.3 var(--se);margin-bottom:4px}.nomatch p{color:var(--mu);font-size:11.5px;max-width:380px;margin:0 auto 8px;line-height:1.6}
+/* ═══ SPACES ═══ */
+.sp-list{padding:20px clamp(16px,3vw,32px) 32px}
+.sp-list h1{font:700 1.1rem/1.3 var(--se);margin-bottom:2px}.sp-list .sub{color:var(--i2);font-size:11.5px;margin-bottom:16px}
+.sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.sp-c{border:1px solid var(--ln);border-radius:9px;background:var(--pp);padding:14px;box-shadow:var(--s1);cursor:pointer;transition:all .12s}
+.sp-c:hover{box-shadow:var(--s2);transform:translateY(-1px)}
+.sp-c .bar{height:2px;border-radius:1px;margin-bottom:8px}
+.sp-c h3{font:700 .9rem/1.3 var(--se);margin-bottom:2px}.sp-c p{font-size:10.5px;color:var(--i2);margin-bottom:6px}
+.sp-c .sts{display:flex;flex-wrap:wrap;gap:3px}.sp-c .sts span{font-size:9px;color:var(--mu);background:var(--wm);padding:1px 5px;border-radius:99px}.sp-c .sts b{color:var(--ik)}
+.sp-c .health{display:flex;align-items:center;gap:4px;margin-top:6px;font-size:9.5px;font-weight:600}
+.sp-new{border:2px dashed var(--l2);background:0;display:grid;place-items:center;min-height:110px;color:var(--mu);font-size:11px;font-weight:600}
+.sp-new:hover{border-color:var(--gn);color:var(--gn)}
+/* WS */
+.ws{padding:18px clamp(16px,3vw,32px) 40px;max-width:940px}
+.ws-back{font-size:10.5px;color:var(--bl);font-weight:600;margin-bottom:10px;display:inline-flex;align-items:center;gap:3px}
+.ws h1{font:700 1.15rem/1.3 var(--se);margin-bottom:2px}.ws>.sub{color:var(--i2);font-size:11px;margin-bottom:12px}
+.ws-resume{border:1px solid var(--gl);border-radius:8px;background:linear-gradient(135deg,#faf9f4,#edf5f0);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--i2);line-height:1.6}
+.ws-resume .lbl{font-size:9px;font-weight:700;color:var(--gn);margin-bottom:2px;letter-spacing:.03em;text-transform:uppercase}.ws-resume b{color:var(--ik)}
+/* threads */
+.thr{border:1px solid var(--ln);border-radius:9px;background:var(--pp);padding:12px 14px;margin-bottom:6px;cursor:pointer;transition:all .12s;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start}
+.thr:hover{border-color:var(--gl);box-shadow:var(--s2)}
+.thr .ico{font-size:15px;padding-top:1px}
+.thr-b{min-width:0}.thr-b h4{font:600 12.5px/1.35 var(--se);margin-bottom:2px}.thr-b p{font-size:10px;color:var(--mu);line-height:1.4}
+.thr-b .tags{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
+.thr-s{text-align:right;font-size:9px;color:var(--mu);white-space:nowrap}.thr-s b{display:block;font-size:10.5px;color:var(--ik);font-weight:600}
+.thr-new{border:2px dashed var(--l2);background:0;display:flex;align-items:center;justify-content:center;gap:4px;padding:9px;color:var(--mu);font-size:11px;font-weight:600;border-radius:8px;cursor:pointer}
+.thr-new:hover{border-color:var(--gn);color:var(--gn)}
+/* decision cards */
+.dc{border:1px solid var(--gl);border-radius:8px;background:var(--pp);padding:12px;margin-bottom:6px;box-shadow:var(--s1);cursor:pointer;transition:all .12s}
+.dc:hover{box-shadow:var(--s2)}
+.dc-h{display:flex;align-items:start;justify-content:space-between;gap:6px;margin-bottom:6px}
+.dc-h h4{font:600 12.5px/1.4 var(--se);flex:1}.dc-h .status{font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px}
+.dc-h .s-ok{background:var(--gb);color:var(--gn)}.dc-h .s-warn{background:var(--ab);color:var(--am)}.dc-h .s-old{background:var(--rb);color:var(--rs)}
+.dc-evidence{display:flex;gap:6px;margin-top:6px}
+.dc-bar{flex:1;height:4px;border-radius:2px;background:var(--wm);overflow:hidden;position:relative}
+.dc-bar-fill{height:100%;border-radius:2px;position:absolute;left:0;top:0}
+.dc-bar .sup{background:var(--gn)}.dc-bar .cha{background:var(--rs);right:0;left:auto}
+.dc-bar-label{font-size:9px;color:var(--mu);white-space:nowrap}
+.dc-meta{font-size:9.5px;color:var(--mu);margin-top:4px}
+/* decision detail */
+.dd{padding:18px clamp(16px,3vw,32px) 40px;max-width:780px}
+.dd-back{font-size:10.5px;color:var(--bl);font-weight:600;margin-bottom:10px;display:inline-flex;align-items:center;gap:3px}
+.dd h2{font:700 1.1rem/1.3 var(--se);margin-bottom:3px}
+.dd>.sub{color:var(--i2);font-size:11px;margin-bottom:14px}
+.dd-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.dd-col h3{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+.dd-col.sup h3{color:var(--gn)}.dd-col.cha h3{color:var(--rs)}
+.ev-i{border:1px solid var(--ln);border-radius:7px;padding:8px 10px;margin-bottom:4px;font-size:11px;background:var(--pp)}
+.ev-i b{display:block;font-weight:500;color:var(--ik);margin-bottom:2px}
+.ev-i small{color:var(--mu);font-size:9.5px}
+.ev-i .quote{font:600 11px/1.5 var(--se);color:var(--ik);margin-top:3px;padding:4px 6px;background:var(--wm);border-radius:4px}
+.sup .ev-i{border-left:3px solid var(--gn)}.cha .ev-i{border-left:3px solid var(--rs)}
+/* timeline */
+.tl-bar{display:flex;align-items:center;gap:0;margin:14px 0;position:relative}
+.tl-bar::before{content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:var(--l2)}
+.tl-dot{position:relative;z-index:1;width:8px;height:8px;border-radius:99px;flex-shrink:0}
+.tl-dot.g{background:var(--gn)}.tl-dot.r{background:var(--rs)}.tl-dot.a{background:var(--am)}
+.tl-space{flex:1}
+.tl-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--mu);margin-bottom:12px}
+.confidence{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--ln);border-radius:7px;background:var(--wm);margin-bottom:14px;font-size:11px}
+.confidence b{color:var(--ik);font-weight:700;font-size:13px}
+.confidence span{color:var(--mu)}
+/* ws bottom */
+.ws-2col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.ws-col .sec{margin-bottom:6px;margin-top:12px}.ws-col .sec:first-child{margin-top:0}
+.jc{display:flex;align-items:start;gap:6px;padding:6px 10px;border-left:3px solid var(--gn);background:var(--gb);border-radius:0 6px 6px 0;margin-bottom:4px}
+.jc .txt{flex:1;font:600 11.5px/1.5 var(--se);color:var(--ik)}.jc .meta{font:400 9px var(--sa);color:var(--mu);margin-top:1px}
+.jc-w{border-left-color:var(--am)}
+.oq{padding:5px 8px;border-left:3px solid var(--am);background:rgba(255,246,224,.15);border-radius:0 6px 6px 0;margin-bottom:4px;font-size:11px;color:var(--i2)}
+/* thread detail */
+.td{padding:18px clamp(16px,3vw,32px) 80px;max-width:780px}
+.td-back{font-size:10.5px;color:var(--bl);font-weight:600;margin-bottom:10px;display:inline-flex;align-items:center;gap:3px}
+.td h2{font:700 1.1rem/1.3 var(--se);margin-bottom:3px}.td>.sub{color:var(--i2);font-size:11px;margin-bottom:14px}
+.td-grid{display:grid;grid-template-columns:1fr 240px;gap:14px}
+.td-main{min-width:0}.td-side{font-size:11px}
+.td-side .sec{margin-top:12px}.td-side .sec:first-child{margin-top:0}
+.td-conv{border:1px solid var(--ln);border-radius:8px;background:var(--pp);padding:10px 12px;margin-bottom:8px}
+.td-conv .u{padding:5px 8px;background:var(--wm);border-radius:5px;font-size:11.5px;margin-bottom:6px;border:1px solid var(--ln)}
+.td-conv .a{font-size:11.5px;color:var(--i2);line-height:1.7}.td-conv .a p{margin-bottom:3px}
+.td-conv .a .art{margin:5px 0;padding:8px 10px 8px 12px}.td-conv .a .art-q{font-size:.82rem}
+.td-input{display:flex;gap:5px;margin-top:6px}
+.td-input input{flex:1;border:1px solid var(--l2);border-radius:6px;background:var(--pp);padding:6px 9px;font-size:11.5px;outline:0}
+.mat{display:flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid var(--ln);border-radius:5px;background:var(--pp);margin-bottom:3px;font-size:10.5px}
+.mat b{flex:1;font-weight:500;color:var(--ik);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dec{padding:5px 8px;border-left:3px solid var(--gn);background:var(--gb);border-radius:0 5px 5px 0;margin-bottom:3px;font:600 11px/1.5 var(--se);color:var(--ik)}
+.dec .meta{font:400 9px var(--sa);color:var(--mu)}
+.note{padding:5px 7px;border:1px solid var(--ln);border-radius:5px;background:var(--wm);margin-bottom:3px;font-size:10.5px;color:var(--i2)}
+.note .time{font-size:8.5px;color:var(--mu)}
+/* SAVE */
+.mo-bg{display:none;position:fixed;inset:0;z-index:80;background:rgba(25,23,20,.14);backdrop-filter:blur(5px);place-items:center}
+.mo-bg.on{display:grid}
+.mo{width:min(440px,calc(100vw - 20px));border-radius:11px;background:var(--pp);box-shadow:0 8px 32px rgba(40,30,10,.12);padding:16px;border:1px solid var(--ln)}
+.mo h3{font:700 .9rem/1.3 var(--se);margin-bottom:8px}
+.mo .src{display:flex;align-items:center;gap:5px;padding:6px 8px;background:var(--wm);border-radius:6px;margin-bottom:8px;font-size:11px}
+.mo .src b{color:var(--ik);font-weight:500;flex:1}.mo .src .ok{color:var(--gn);font-size:9px;font-weight:700}
+.mo label{display:block;font-size:11px;color:var(--i2);font-weight:600;margin-bottom:3px}
+.mo textarea{width:100%;min-height:48px;border:1px solid var(--ln);border-radius:7px;background:#fffefd;padding:7px 10px;font:600 12.5px/1.7 var(--se);color:var(--ik);outline:0;resize:vertical}
+.mo textarea:focus{border-color:rgba(44,102,83,.2);box-shadow:0 0 0 2px rgba(44,102,83,.04)}
+.mo textarea::placeholder{color:rgba(138,127,115,.28);font-weight:400}
+.mo .hint{font-size:9.5px;color:var(--mu);margin:2px 0 6px}
+.mo .tgs{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:8px}
+.mo .tgb{border:1px solid var(--ln);border-radius:99px;padding:2px 7px;font-size:10px;color:var(--i2);font-weight:500;transition:all .1s}
+.mo .tgb.on{border-color:var(--bl);color:var(--bl);background:rgba(234,240,248,.4)}
+.conn{border:1px solid var(--gl);border-radius:6px;background:linear-gradient(135deg,#faf9f4,#eef5f1);padding:8px 10px;margin:8px 0;font-size:10.5px;color:var(--i2);line-height:1.5}
+.conn b{color:var(--ik)}
+.conn .ins{margin-top:4px;padding:4px 7px;background:rgba(255,246,224,.25);border-left:2px solid var(--am);border-radius:0 4px 4px 0;font-size:10px;color:var(--ik)}
+.mo .mf{display:flex;gap:3px;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--ln)}
+@media(max-width:768px){.nav{display:none}.mn{margin-left:0}.cv-bot{left:0}.td-grid,.dd-grid,.ws-2col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="bm">Sg</div>
+<button class="nb on" data-v="conv" onclick="go('conv')"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span class="tp">对话</span></button>
+<button class="nb" data-v="space" onclick="go('space')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="tp">空间</span></button>
+<div class="ns"></div>
+<button class="nb" onclick="openSv()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span class="tp">保存</span></button>
+<button class="nb" onclick="alert('设置')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="tp">设置</span></button>
+</nav>
+<div class="mn">
+<!-- ═══ CONV ═══ -->
+<div class="vw on" id="v-conv"><div class="cv">
+<div class="cv-home" id="cv-home"><h1>找回你当时为什么这样想</h1><p class="sub">先找原话和来源，再给你 AI 的理解。</p>
+<div class="ib"><textarea placeholder="比如：我对产品方向的核心判断是什么？" id="q-in"></textarea><div class="ib-f"><div class="ib-s"><span class="dot"></span>本地优先 · 私密材料不外发</div><button class="bt bt-p" onclick="doQ()">提问</button></div></div>
+<div class="eq"><button onclick="ask(0)">我之前为什么要做"保存判断"?</button><button onclick="ask(1)">我当时为什么不做协作编辑?</button><button onclick="ask(2)">量子菠萝的投资 memo 在哪?</button></div>
+<div class="cv-rec"><h4>最近保存</h4><div class="ri"><span class="t">1h前</span><span class="n">meeting_notes.md</span></div><div class="ri"><span class="t">2周前</span><span class="n">note_snapgraph_idea.md</span></div><div class="ri"><span class="t">3周前</span><span class="n">A Survey on LLM-based Autonomous Agents</span></div></div></div>
+<!-- TH A -->
+<div class="thread" id="th-a" style="display:none"><div class="ib"><textarea id="q-a" readonly style="min-height:14px;font-size:.76rem"></textarea><div class="ib-f"><div class="ib-s"><span class="dot"></span>搜索了 312 条材料</div><button class="bt" onclick="reset()">新对话</button></div></div>
+<div class="a-msg"><p><span class="tg tg-g">找到 1 段你的原话</span> <span style="font-size:9px;color:var(--mu)">+ 2 条相关材料</span></p>
+<div class="art"><div class="art-h"><span class="info">📄 <b>note_snapgraph_idea.md</b> · 两周前</span><button class="bt bt-go" onclick="alert('打开原文')">打开原文 ↗</button></div><p class="art-q">「普通聊天只给答案，但它不会保存你为什么相信这个答案。SnapGraph 真正要做的不是搜索，而是把判断和证据一起留下来。」</p><div class="art-f"><span class="tg tg-g">你的原话 · 一字未改</span></div></div>
+<p>你在三周前的会议记录里也说过——</p>
+<div class="art"><div class="art-h"><span class="info">📄 <b>meeting_research_plan.md</b> · 三周前</span><button class="bt bt-go" onclick="alert('打开原文')">打开原文 ↗</button></div><p class="art-q">「如果只是做搜索，用户会直接问 ChatGPT。我们的价值是让用户找回自己说过的话。」</p><div class="art-f"><span class="tg tg-g">你的原话</span></div></div>
+<p>核心判断很稳定：SnapGraph 的价值在于<b>还原判断和理由</b>，不在于比 ChatGPT 更聪明。另外你在 11 份材料里反复用了「找回当时的那个自己」——如果保存的不是「判断」而是「那个时刻的你」，这可能是更深的产品脉络。</p>
+<div class="acts"><button class="bt bt-p" onclick="showF()">展开这个方向</button><button class="bt" onclick="alert('看 11 份')">看这 11 份</button><button class="bt" onclick="alert('导出')">导出证据包</button></div></div>
+<div id="follow" style="display:none"><div class="u-msg">展开说说，为什么是"那个时刻的你"而不是"判断"？</div>
+<div class="a-msg"><p>因为在你的表述里，「判断」是结果，你更在意过程——</p>
+<div class="art"><div class="art-h"><span class="info">📄 <b>note_methodology.md</b> · 两周前</span><button class="bt bt-go" onclick="alert('打开')">打开原文 ↗</button></div><p class="art-q">「知识可以重新生成，但当时为什么在乎，只有那一刻的自己知道。」</p><div class="art-f"><span class="tg tg-g">你的原话</span></div></div>
+<p>产品定位可以从「证据回收」变成<b>「自我重逢」</b>。你们比赛最强的一句话：<b>帮人在 AI 时代记得自己是谁。</b></p></div></div></div>
+<!-- TH B -->
+<div class="thread" id="th-b" style="display:none"><div class="ib"><textarea id="q-b" readonly style="min-height:14px;font-size:.76rem"></textarea><div class="ib-f"><div class="ib-s"><span class="dot"></span>搜索了 312 条材料</div><button class="bt" onclick="reset()">新对话</button></div></div>
+<div class="a-msg"><p><span class="tg tg-g">找到 1 段你的原话</span> <span class="tg tg-r">⚠ 1 条反证</span></p>
+<div class="art"><div class="art-h"><span class="info">📄 <b>meeting_product_decision.md</b> · 三个月前</span><button class="bt bt-go" onclick="alert('打开')">打开原文 ↗</button></div><p class="art-q">「不做协作编辑。6/8 个用户只需要导出。先把核心做到极致。」</p><div class="art-f"><span class="tg tg-g">你的原话</span></div></div>
+<div class="ctr"><b>⚠ 新材料可能挑战此判断</b><p><b>user_feedback_round2.md</b> 里 3 位用户提到希望有协作。</p><div style="margin-top:4px"><button class="bt bt-go" onclick="alert('打开')">打开新材料 ↗</button></div></div>
+<p>这个旧判断现在还成立吗？</p>
+<div class="acts" id="jg"><button class="bt" onclick="jgR('仍然有效','gn')">仍然有效</button><button class="bt" onclick="jgR('重新评估','am')">重新评估</button><button class="bt" style="color:var(--rs)" onclick="jgR('已过时','rs')">已过时</button></div></div></div>
+<!-- TH C -->
+<div class="thread" id="th-c" style="display:none"><div class="ib"><textarea id="q-c" readonly style="min-height:14px;font-size:.76rem"></textarea><div class="ib-f"><div class="ib-s"><span class="dot"></span>搜索了 312 条</div><button class="bt" onclick="reset()">新对话</button></div></div>
+<div class="nomatch"><h3>没有找到可靠的本地证据。</h3><p>已扫描 312 份材料。不编造答案。</p><div class="acts" style="justify-content:center"><button class="bt" onclick="reset()">换个问法</button><button class="bt" onclick="openSv()">保存新材料</button><button class="bt bt-p" onclick="alert('AI探索')">用 AI 聊，标明无证据</button></div></div></div>
+</div><div class="cv-bot" id="cv-bot" style="display:none"><div class="cv-bot-in"><input placeholder="继续问..." onkeydown="if(event.key==='Enter'){showF();this.value=''}"></div></div></div>
+
+<!-- ═══ SPACES ═══ -->
+<div class="vw" id="v-space">
+<div class="sp-list" id="sp-list"><h1>你的记忆空间</h1><p class="sub">每个空间是一个项目的工作台——包含思考线、判断、证据和对话。</p>
+<div class="sp-grid">
+<div class="sp-c" onclick="openWs()"><div class="bar" style="background:var(--gn)"></div><h3>SnapGraph 项目</h3><p>产品设计 · 用户研究 · 技术方案</p><div class="sts"><span><b>23</b> 材料</span><span><b>3</b> 思考线</span><span><b>8</b> 判断</span></div><div class="health" style="color:var(--am)">⚠ 1 个判断被新证据挑战</div></div>
+<div class="sp-c" onclick="openWs()"><div class="bar" style="background:var(--bl)"></div><h3>AI Agent 调研</h3><p>论文 · 框架对比 · 选型</p><div class="sts"><span><b>12</b> 材料</span><span><b>2</b> 思考线</span><span><b>3</b> 判断</span></div><div class="health" style="color:var(--gn)">✓ 所有判断状态正常</div></div>
+<div class="sp-c" onclick="openWs()"><div class="bar" style="background:var(--am)"></div><h3>比赛策划</h3><p>PPT · 故事线 · 演示</p><div class="sts"><span><b>8</b> 材料</span><span><b>2</b> 判断</span></div><div class="health" style="color:var(--gn)">✓ 正常</div></div>
+<div class="sp-c" style="border-style:dashed;border-color:var(--al)" onclick="alert('收件箱')"><div class="bar" style="background:var(--am)"></div><h3>收件箱</h3><p>4 份待归类材料</p></div>
+<button class="sp-c sp-new" onclick="alert('新空间')">+ 新空间</button>
+</div></div>
+<!-- WS -->
+<div class="ws" id="ws" style="display:none">
+<button class="ws-back" onclick="closeWs()">← 所有空间</button>
+<h1>SnapGraph 项目</h1><p class="sub">23 份材料 · 8 条判断 · 3 条思考线 · 最近更新 1h前</p>
+<div class="ws-resume"><div class="lbl">📌 上次你在做什么</div><p>你在「<b>产品定位</b>」线上——写下了「保存的不是知识而是判断」，AI 发现了「找回那个时刻的你」这条脉络。你 1h前确认了<b>「先做本地版」</b>。注意：「GraphRAG 不适合」这个判断有新反证。</p></div>
+<!-- threads -->
+<div class="sec">思考线</div>
+<div class="thr" onclick="openTd()"><span class="ico">💡</span><div class="thr-b"><h4>产品定位</h4><p>为什么不是知识库？核心价值？怎么和 ChatGPT 区分？</p><div class="tags"><span class="tg tg-g">2 判断</span><span class="tg tg-x">5 材料</span><span class="tg tg-a">1 待解</span></div></div><div class="thr-s"><b>3 次对话</b>最近 2周前</div></div>
+<div class="thr" onclick="openTd()"><span class="ico">🔧</span><div class="thr-b"><h4>Demo 设计</h4><p>交互逻辑、前端设计、用户测试</p><div class="tags"><span class="tg tg-g">1 判断</span><span class="tg tg-x">3 材料</span><span class="tg tg-a">2 待解</span></div></div><div class="thr-s"><b>2 次对话</b>最近 3天前</div></div>
+<div class="thr" onclick="openTd()"><span class="ico">📊</span><div class="thr-b"><h4>PPT 与故事</h4><p>比赛叙事、设计理念、六格故事板</p><div class="tags"><span class="tg tg-g">1 判断</span><span class="tg tg-x">4 材料</span></div></div><div class="thr-s"><b>1 次对话</b>最近 1周前</div></div>
+<div class="thr thr-new" onclick="alert('新思考线')">+ 新的思考线</div>
+<!-- decisions -->
+<div class="sec" style="margin-top:16px">判断看板 · 支持 vs 挑战</div>
+<div class="dc" onclick="openDd()"><div class="dc-h"><h4>「先做本地版再考虑团队功能」</h4><span class="status s-ok">有效</span></div><div class="dc-evidence"><span class="dc-bar-label" style="color:var(--gn)">3 支持</span><div class="dc-bar"><div class="dc-bar-fill sup" style="width:75%"></div><div class="dc-bar-fill cha" style="width:0"></div></div><span class="dc-bar-label" style="color:var(--rs)">0 挑战</span></div><div class="dc-meta">1h前 · meeting_notes.md · 信心 高</div></div>
+<div class="dc" onclick="openDd()"><div class="dc-h"><h4>「保存的不是知识，而是判断和理由」</h4><span class="status s-ok">有效</span></div><div class="dc-evidence"><span class="dc-bar-label" style="color:var(--gn)">5 支持</span><div class="dc-bar"><div class="dc-bar-fill sup" style="width:100%"></div></div><span class="dc-bar-label" style="color:var(--rs)">0 挑战</span></div><div class="dc-meta">2周前 · note_snapgraph_idea.md · 信心 很高</div></div>
+<div class="dc" onclick="openDd()"><div class="dc-h"><h4>「不做协作编辑，先做核心」</h4><span class="status s-warn">被挑战</span></div><div class="dc-evidence"><span class="dc-bar-label" style="color:var(--gn)">2 支持</span><div class="dc-bar"><div class="dc-bar-fill sup" style="width:50%"></div><div class="dc-bar-fill cha" style="width:25%"></div></div><span class="dc-bar-label" style="color:var(--rs)">1 挑战</span></div><div class="dc-meta">3个月前 · meeting_product_decision.md · 信心 需复查</div></div>
+<div class="dc" onclick="openDd()"><div class="dc-h"><h4>「GraphRAG 不适合我们的场景」</h4><span class="status s-old">可能过时</span></div><div class="dc-evidence"><span class="dc-bar-label" style="color:var(--gn)">1 支持</span><div class="dc-bar"><div class="dc-bar-fill sup" style="width:25%"></div><div class="dc-bar-fill cha" style="width:50%"></div></div><span class="dc-bar-label" style="color:var(--rs)">2 挑战</span></div><div class="dc-meta">1月前 · 有积极评价的新材料</div></div>
+<div class="ws-2col">
+<div class="ws-col"><div class="sec">待解问题</div><div class="oq">截图入口技术方案未确定</div><div class="oq">GraphRAG 效果需实测</div><div class="oq">涌现机制的产品形态</div></div>
+<div class="ws-col"><div class="sec">操作</div><button class="bt bt-p" onclick="go('conv')" style="width:100%;justify-content:center;margin-bottom:4px">基于这个项目对话</button><button class="bt" onclick="alert('导出')" style="width:100%;justify-content:center">导出项目证据包</button></div>
+</div></div>
+<!-- DECISION DETAIL -->
+<div class="dd" id="dd" style="display:none">
+<button class="dd-back" onclick="backFromDd()">← SnapGraph 项目</button>
+<h2>「不做协作编辑，先做核心」</h2>
+<p class="sub">三个月前 · meeting_product_decision.md</p>
+<div class="confidence"><b>信心：需复查</b><span>形成时 高 → 当前 被挑战</span></div>
+<!-- timeline -->
+<div class="sec">判断演变时间线</div>
+<div class="tl-labels"><span>3月前 · 形成判断</span><span>1月前 · 稳定</span><span>上周 · 新反证</span></div>
+<div class="tl-bar"><div class="tl-dot g"></div><div class="tl-space"></div><div class="tl-dot g"></div><div class="tl-space"></div><div class="tl-dot r"></div></div>
+<!-- supports vs challenges -->
+<div class="dd-grid">
+<div class="dd-col sup"><h3>支持 (2)</h3>
+<div class="ev-i"><b>📄 meeting_product_decision.md</b><small>三个月前 · 决策会议</small><div class="quote">6/8 个受访用户只需要导出，不需要协作编辑</div><button class="bt" style="margin-top:4px;font-size:9px" onclick="alert('打开')">打开原文 ↗</button></div>
+<div class="ev-i"><b>📄 note_snapgraph_idea.md</b><small>两周前</small><div class="quote">先把核心做好才有根基</div><button class="bt" style="margin-top:4px;font-size:9px" onclick="alert('打开')">打开原文 ↗</button></div>
+</div>
+<div class="dd-col cha"><h3>挑战 (1)</h3>
+<div class="ev-i"><b>📄 user_feedback_round2.md</b><small>上周 · 用户反馈</small><div class="quote">3 位用户提到希望有协作功能，其中 1 位说这是付费的前提</div><button class="bt" style="margin-top:4px;font-size:9px" onclick="alert('打开')">打开原文 ↗</button></div>
+</div>
+</div>
+<div class="sec">你怎么看？</div>
+<div class="acts" id="dd-jg"><button class="bt" onclick="ddJg('仍然有效','gn')">仍然有效</button><button class="bt" onclick="ddJg('需要修正','am')">需要修正</button><button class="bt" style="color:var(--rs)" onclick="ddJg('已过时','rs')">已过时</button><button class="bt bt-p" onclick="go('conv')">基于这个判断对话</button></div>
+</div>
+<!-- THREAD DETAIL -->
+<div class="td" id="td" style="display:none">
+<button class="td-back" onclick="backToWs()">← SnapGraph 项目</button>
+<h2>💡 产品定位</h2><p class="sub">为什么不是知识库？核心价值？怎么和 ChatGPT 区分？</p>
+<div class="td-grid"><div class="td-main">
+<div class="sec">对话 1 · 三周前</div>
+<div class="td-conv"><div class="u">为什么觉得普通聊天不够？</div><div class="a">
+<div class="art"><div class="art-h"><span class="info">📄 <b>note_snapgraph_idea.md</b></span><button class="bt bt-go" style="font-size:9px" onclick="alert('打开')">打开↗</button></div><p class="art-q">「普通聊天只给答案，但它不会保存你为什么相信。」</p></div>
+<p>核心判断：SnapGraph 的价值在于还原判断和理由。</p></div></div>
+<div class="sec">对话 2 · 两周前</div>
+<div class="td-conv"><div class="u">产品定位应该怎么讲？</div><div class="a"><p>你在 11 份材料里反复用了「找回当时的那个自己」。定位可以从「证据回收」变成<b>「自我重逢」</b>。</p></div></div>
+<div class="sec">对话 3 · 两周前</div>
+<div class="td-conv"><div class="u">"那个时刻的你"怎么理解？</div><div class="a">
+<div class="art"><div class="art-h"><span class="info">📄 <b>note_methodology.md</b></span><button class="bt bt-go" style="font-size:9px" onclick="alert('打开')">打开↗</button></div><p class="art-q">「知识可以重新生成，但当时为什么在乎，只有那一刻的自己知道。」</p></div>
+<p>最强的一句话：<b>帮人在 AI 时代记得自己是谁。</b></p></div></div>
+<div class="sec">继续</div><div class="td-input"><input placeholder="在这条线上继续问..."><button class="bt bt-p">提问</button></div>
+</div>
+<div class="td-side">
+<div class="sec">沉淀的判断</div>
+<div class="dec">「保存的不是知识，而是判断和理由」<div class="meta">2周前</div></div>
+<div class="dec">「AI 不替你想，帮你记得你想过」<div class="meta">2周前 · 对话沉淀</div></div>
+<div class="sec">相关材料</div>
+<div class="mat"><span>📄</span><b>note_snapgraph_idea.md</b><button class="bt" style="font-size:9px" onclick="alert('打开')">↗</button></div>
+<div class="mat"><span>📄</span><b>meeting_research_plan.md</b><button class="bt" style="font-size:9px" onclick="alert('打开')">↗</button></div>
+<div class="mat"><span>📄</span><b>note_methodology.md</b><button class="bt" style="font-size:9px" onclick="alert('打开')">↗</button></div>
+<div class="mat"><span>📑</span><b>A Survey on LLM Agents</b><button class="bt" style="font-size:9px" onclick="alert('打开')">↗</button></div>
+<div class="sec">待解</div><div class="oq">涌现机制的产品形态</div>
+<div class="sec">笔记</div>
+<div class="note"><div class="time">2周前</div>「自我重逢」可能比「证据回收」更有力</div>
+<div class="note"><div class="time">3周前</div>PPT 里用「帮人记得自己是谁」</div>
+<button class="bt" style="margin-top:4px;width:100%;justify-content:center" onclick="alert('添加笔记')">+ 笔记</button>
+</div></div></div>
+</div>
+</div>
+<!-- SAVE -->
+<div class="mo-bg" id="sav" onclick="if(event.target===this)closeSv()"><div class="mo"><h3>保存为可找回的记忆</h3><div class="src"><span>🌐</span><b>NotebookLM product notes</b><span class="ok">✓ 已备份</span></div><label>你想记住什么想法？</label><textarea placeholder="给将来的你写一句。"></textarea><p class="hint">留空也行。系统不替你写。</p><label style="margin-bottom:3px">保存到</label><div class="tgs"><button class="tgb on" onclick="sTg(this)">SnapGraph 项目</button><button class="tgb" onclick="sTg(this)">AI Agent 调研</button><button class="tgb" onclick="sTg(this)">让 AI 判断</button></div><div class="conn" id="conn" style="display:none"><b>和 3 样东西相关：</b><br>· 你的「保存判断 vs 保存知识」笔记<br>· LLM Agent 论文第 7 页<br>· meeting_notes 里的产品方向<div class="ins">⚡ 新材料提到 NotebookLM，和你「AI不替你想」的立场可能有张力——这个矛盾值得探索。</div></div><div class="mf"><button class="bt" onclick="closeSv()">稍后</button><button class="bt" onclick="closeSv()">先保存</button><button class="bt bt-p" onclick="doSv()">保存</button></div></div></div>
+<script>
+var QS=['我之前为什么要做"保存判断"?','我当时为什么不做协作编辑?','量子菠萝的投资 memo 在哪?'],TH=['th-a','th-b','th-c'],QI=['q-a','q-b','q-c'];
+function go(v){document.querySelectorAll('.vw').forEach(e=>e.classList.remove('on'));document.getElementById('v-'+v).classList.add('on');document.querySelectorAll('.nb[data-v]').forEach(b=>b.classList.remove('on'));document.querySelectorAll('.nb[data-v="'+v+'"]').forEach(b=>b.classList.add('on'));if(v==='conv')reset();if(v==='space')hideAll()}
+function hideAll(){document.getElementById('sp-list').style.display='';document.getElementById('ws').style.display='none';document.getElementById('td').style.display='none';document.getElementById('dd').style.display='none'}
+function ask(i){document.getElementById('cv-home').style.display='none';TH.forEach(t=>document.getElementById(t).style.display='none');document.getElementById(TH[i]).style.display='block';document.getElementById(QI[i]).value=QS[i];document.getElementById('cv-bot').style.display=i===2?'none':'block';document.getElementById('follow').style.display='none';scrollTo(0,0)}
+function doQ(){var v=document.getElementById('q-in').value.trim();if(!v)return;ask(0);document.getElementById('q-a').value=v}
+function reset(){document.getElementById('cv-home').style.display='flex';TH.forEach(t=>document.getElementById(t).style.display='none');document.getElementById('cv-bot').style.display='none';document.getElementById('q-in').value='';document.getElementById('follow').style.display='none';scrollTo(0,0)}
+function showF(){document.getElementById('follow').style.display='block';document.getElementById('follow').scrollIntoView({behavior:'smooth'})}
+function jgR(t,c){document.getElementById('jg').innerHTML='<span style="color:var(--'+c+');font-size:11px;font-weight:600">✓ '+t+'</span>'}
+function openWs(){document.getElementById('sp-list').style.display='none';document.getElementById('ws').style.display='block';document.getElementById('td').style.display='none';document.getElementById('dd').style.display='none'}
+function closeWs(){hideAll()}
+function openTd(){document.getElementById('ws').style.display='none';document.getElementById('td').style.display='block';scrollTo(0,0)}
+function backToWs(){document.getElementById('td').style.display='none';document.getElementById('ws').style.display='block'}
+function openDd(){document.getElementById('ws').style.display='none';document.getElementById('dd').style.display='block';scrollTo(0,0)}
+function backFromDd(){document.getElementById('dd').style.display='none';document.getElementById('ws').style.display='block'}
+function ddJg(t,c){document.getElementById('dd-jg').innerHTML='<span style="color:var(--'+c+');font-size:11px;font-weight:600">✓ '+t+'</span>'}
+function openSv(){document.getElementById('sav').classList.add('on');document.getElementById('conn').style.display='none'}
+function closeSv(){document.getElementById('sav').classList.remove('on')}
+function doSv(){document.getElementById('conn').style.display='block';setTimeout(()=>{closeSv();alert('已保存。发现 3 条相关材料。')},1200)}
+function sTg(b){b.parentElement.querySelectorAll('.tgb').forEach(t=>t.classList.remove('on'));b.classList.add('on')}
+</script>
+</body>
+</html>

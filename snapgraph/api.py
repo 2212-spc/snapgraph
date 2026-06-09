@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .answer import (
-    ANSWER_AI_EXPLORATION,
+    ANSWER_CONCLUSION,
     answer_question,
     clean_answer_glyphs,
     ensure_retrieval_diagnostics,
@@ -551,8 +551,14 @@ def api_ask(payload: dict):
     if not question:
         raise HTTPException(400, "Question is required")
     space_id = str(payload.get("space_id") or "all")
+    context_source_ids = _payload_context_source_ids(payload)
     ws = _workspace()
-    retrieval = retrieve_for_question(ws, question, space_id=space_id)
+    retrieval = retrieve_for_question(
+        ws,
+        question,
+        space_id=space_id,
+        context_source_ids=context_source_ids,
+    )
     if retrieval.contexts:
         try:
             llm, metadata = resolve_llm_with_metadata(ws)
@@ -607,10 +613,16 @@ def api_ask_stream(payload: dict):
     if not question:
         raise HTTPException(400, "Question is required")
     space_id = str(payload.get("space_id") or "all")
+    context_source_ids = _payload_context_source_ids(payload)
 
     def generate():
         ws = _workspace()
-        retrieval = retrieve_for_question(ws, question, space_id=space_id)
+        retrieval = retrieve_for_question(
+            ws,
+            question,
+            space_id=space_id,
+            context_source_ids=context_source_ids,
+        )
         focus_graph = focus_graph_from_retrieval(ws, retrieval, space_id=space_id)
         yield _sse(
             "stage",
@@ -668,7 +680,7 @@ def api_ask_stream(payload: dict):
                 ai_reply = clean_answer_glyphs("".join(reply_chunks).strip())
                 final_text = render_answer(retrieval, question=question)
                 if ai_reply:
-                    final_text = _replace_markdown_section(final_text, ANSWER_AI_EXPLORATION, ai_reply)
+                    final_text = _replace_markdown_section(final_text, ANSWER_CONCLUSION, ai_reply)
                 final_text = ensure_retrieval_diagnostics(final_text, retrieval)
                 result = AnswerResult(question=question, text=final_text, retrieval=retrieval)
             else:
@@ -758,9 +770,12 @@ def api_question_detail(question_id: str):
         raise HTTPException(404, "Question not found")
     text = page_path.read_text(encoding="utf-8")
     fm = _parse_frontmatter(text)
+    answer = _markdown_section(text, "## Answer", ["## Evidence Source Pages", "## Saved Graph Paths"])
     return {
         "id": fm.get("id", question_id),
         "question": _section_text(text, "## Question"),
+        "answer": _clean_markdown_text(answer),
+        "answer_heading": "Answer",
         "markdown": text,
         "path": ws.relative_to_workspace(page_path),
         "evidence_source_ids": json.loads(fm.get("evidence_source_ids", "[]")),
@@ -863,6 +878,13 @@ def _context_dicts(retrieval) -> list[dict]:
     ]
 
 
+def _payload_context_source_ids(payload: dict) -> list[str]:
+    raw = payload.get("context_source_ids") or payload.get("batch_source_ids") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw]
+
+
 def _contexts_payload(ws: Workspace, retrieval) -> list[dict]:
     confidence_by_source = _context_confidence_by_source(ws)
     return [
@@ -938,6 +960,24 @@ def _section_text(text: str, heading: str) -> str:
     if "\n## " in tail:
         tail = tail.split("\n## ", 1)[0]
     return " ".join(tail.strip().split())
+
+
+def _markdown_section(text: str, heading: str, stop_headings: list[str]) -> str:
+    if heading not in text:
+        return ""
+    tail = text.split(heading, 1)[1].lstrip()
+    stops = [tail.find(stop) for stop in stop_headings if stop in tail]
+    if stops:
+        tail = tail[: min(stops)]
+    return tail.strip()
+
+
+def _clean_markdown_text(text: str) -> str:
+    return " ".join(
+        line.strip()
+        for line in text.replace("# Answer", "").splitlines()
+        if line.strip()
+    ).strip()
 
 
 def _loads_json_list(value: str | None) -> list[str]:

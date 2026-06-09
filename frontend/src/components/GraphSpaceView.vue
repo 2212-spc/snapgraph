@@ -2,28 +2,23 @@
   <section class="space-detail graph-space-detail" v-if="space">
     <header class="space-detail-head">
       <div>
-        <p class="eyebrow">{{ surfaceMode === 'overview' ? '图谱概览' : '图谱操作台' }}</p>
-        <h2>{{ space.name }}</h2>
+        <p class="eyebrow">{{ surfaceMode === 'overview' ? '知识库 / 记忆云' : '知识库 / 高级审计' }}</p>
+        <h2>{{ spaceDisplayName }}</h2>
         <p>{{ spaceDescription }}</p>
       </div>
       <div class="space-detail-topbar">
         <div class="space-stats graph-space-stats">
-          <span class="graph-stat-chip">{{ space.source_count }} 材料</span>
-          <span class="graph-stat-chip">{{ space.node_count }} 节点</span>
-          <span class="graph-stat-chip">{{ space.edge_count }} 边</span>
-          <span v-if="overviewOpenCount" class="graph-stat-chip">
-            {{ overviewOpenCount }} {{ overviewOpenLabel }}
-          </span>
+          <span v-for="stat in graphHeaderStats" :key="stat" class="graph-stat-chip">{{ stat }}</span>
         </div>
 
-        <div class="graph-mode-switch" role="tablist" aria-label="图谱模式切换">
+        <div class="graph-mode-switch" role="tablist" aria-label="知识库视图切换">
           <button
             :class="{ active: surfaceMode === 'overview' }"
             role="tab"
             :aria-selected="surfaceMode === 'overview'"
             @click="surfaceMode = 'overview'"
           >
-            概览
+            记忆云
           </button>
           <button
             :class="{ active: surfaceMode === 'workbench' }"
@@ -31,37 +26,216 @@
             :aria-selected="surfaceMode === 'workbench'"
             @click="surfaceMode = 'workbench'"
           >
-            专业模式
+            高级审计
           </button>
         </div>
       </div>
     </header>
 
     <section v-if="surfaceMode === 'overview'" class="graph-overview-mode">
-      <div class="graph-overview-actions">
-        <button class="primary-button" @click="askFromSpace">找回这个空间里的判断</button>
-        <button class="paper-button" @click="openActionWorkbench">整理开放问题</button>
-        <button class="ghost-button" @click="surfaceMode = 'workbench'">进入专业模式</button>
+      <div class="graph-guided-actions" aria-label="这个空间的下一步">
+        <button class="graph-guided-action primary" type="button" @click="askFromSpace">
+          <span>找回旧判断</span>
+          <strong>先问一句过去的你</strong>
+          <small>{{ userStatedSourceCount ? `优先找 ${userStatedSourceCount} 条用户原话和证据` : '先从本地材料里找证据' }}</small>
+        </button>
+        <button class="graph-guided-action" type="button" @click="openActionWorkbench">
+          <span>继续处理</span>
+          <strong>{{ overviewOpenCount ? `${overviewOpenCount} 个未闭环线索` : '暂时没有急着处理的问题' }}</strong>
+          <small>{{ openLoopGuidance }}</small>
+        </button>
+        <button class="graph-guided-action" type="button" @click="openAuditWorkbench">
+          <span>高级审计</span>
+          <strong>{{ reviewQueueCount ? `${reviewQueueCount} 条可审查线索` : '查看证据路径和关系' }}</strong>
+          <small>只在你想检查来源、关系或 AI 建议时进入。</small>
+        </button>
       </div>
+
+      <section class="space-panel memory-cloud-console">
+        <div class="memory-cloud-head">
+          <div>
+            <p class="section-kicker">记忆云</p>
+            <h3>搜一个词，找过去的证据</h3>
+            <p>
+              记忆星图里，每条线索都是一颗星。保存过的问题、用户原话、材料暗示的问题和开放事项会聚在一起。先点一个线索，
+              看它对应哪些来源，再决定要不要追问。
+            </p>
+          </div>
+          <span>{{ cloudItems.length }} 条记忆线索</span>
+        </div>
+
+        <div class="memory-cloud-layout">
+          <div
+            v-if="visibleCloudItems.length"
+            ref="cloudOrbitElement"
+            class="cloud-orbit cloud-constellation"
+            :class="{ 'is-cloud-dragging': draggingCloudKey, 'is-cloud-recoiling': cloudRecoilKey, 'is-cloud-returning': cloudReturnKey }"
+            aria-label="搜索历史星图"
+            tabindex="0"
+            @keydown.esc.prevent="clearCloudSearch"
+          >
+            <form class="cloud-search-row constellation-search" @submit.prevent="askCloudSearch">
+              <Search :size="17" />
+              <input v-model="graphSearchQuery" placeholder="搜关键词，匹配的点会亮起来..." />
+            </form>
+
+            <svg
+              class="cloud-constellation-edges"
+              :viewBox="`0 0 ${cloudOrbitSize.width} ${cloudOrbitSize.height}`"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <line
+                v-for="edge in cloudConstellationEdges"
+                :key="edge.id"
+                :x1="edge.x1"
+                :y1="edge.y1"
+                :x2="edge.x2"
+                :y2="edge.y2"
+                :class="{ active: edge.active }"
+              />
+              <circle
+                v-if="selectedCloudPoint"
+                class="cloud-constellation-core-ring"
+                :cx="selectedCloudPoint.x"
+                :cy="selectedCloudPoint.y"
+                r="74"
+              />
+            </svg>
+
+            <button
+              v-for="(item, index) in visibleCloudItems"
+              :key="item.key"
+              type="button"
+              class="cloud-node"
+              :class="cloudNodeClasses(item)"
+              :style="cloudNodeStyle(item, index)"
+              :aria-pressed="selectedCloudKey === item.key"
+              :title="item.label"
+              @click="selectCloudNode($event, item)"
+              @pointerdown.stop="startCloudDrag($event, item)"
+              @pointermove.stop="moveCloudDrag($event)"
+              @pointerup.stop="endCloudDrag"
+              @pointercancel.stop="cancelCloudDrag"
+              @lostpointercapture.stop="handleCloudLostPointerCapture($event)"
+            >
+              <span class="cloud-node-halo" aria-hidden="true"></span>
+              <span class="cloud-node-dot" aria-hidden="true"></span>
+              <strong>{{ cloudLabel(item.label) }}</strong>
+            </button>
+
+            <div
+              v-if="selectedCloudKey && selectedCloudItem && selectedCloudPoint"
+              class="cloud-focus-label"
+              :style="cloudFocusLabelStyle"
+            >
+              {{ cloudLabel(selectedCloudItem.label) }}
+            </div>
+
+            <div class="cloud-helper-pill">相关线索会一起亮起</div>
+          </div>
+          <div v-else class="cloud-empty-state">
+            <strong>还没有匹配的记忆点</strong>
+            <p>换一个更宽的词，或者先去“收集”里放入材料。</p>
+          </div>
+
+          <aside class="cloud-inspector-card cloud-context-dock">
+            <template v-if="selectedCloudItem">
+              <span>{{ selectedCloudItem.kindLabel }}</span>
+              <strong>{{ selectedCloudItem.label }}</strong>
+              <p>{{ selectedCloudItem.detail }}</p>
+              <div v-if="selectedCloudItem.evidenceTitles.length" class="cloud-evidence-list">
+                <small>证据来源</small>
+                <button
+                  v-for="source in selectedCloudItem.evidenceTitles"
+                  :key="source.id"
+                  type="button"
+                  @click="selectSourceById(source.id)"
+                >
+                  {{ source.title }}
+                </button>
+              </div>
+              <div class="cloud-actions">
+                <button class="primary-button" @click="continueFromCloud(selectedCloudItem)">继续从这里追问</button>
+                <button class="paper-button" @click="focusCloudItem(selectedCloudItem)">看连接</button>
+              </div>
+            </template>
+            <template v-else>
+              <span>记忆星图</span>
+              <strong>先点一个记忆点</strong>
+              <p>这里会解释它为什么出现，以及它对应哪些来源。</p>
+            </template>
+          </aside>
+
+          <section
+            v-if="selectedQuestionDetail || questionDetailLoading || questionDetailError"
+            class="cloud-history-panel cloud-conversation-window"
+            :class="{ 'is-loading': questionDetailLoading }"
+            aria-live="polite"
+          >
+            <div class="cloud-history-head">
+              <div>
+                <span>对话记录</span>
+                <strong>历史问答窗口</strong>
+              </div>
+              <button class="text-button" type="button" @click="closeQuestionHistory">关闭</button>
+            </div>
+
+            <template v-if="selectedQuestionDetail">
+              <div class="cloud-chat-thread">
+                <article class="cloud-chat-message is-user">
+                  <span class="cloud-chat-avatar">你</span>
+                  <div class="cloud-chat-bubble">
+                    <small>当初的问题</small>
+                    <p>{{ selectedQuestionDetail.question }}</p>
+                  </div>
+                </article>
+                <article class="cloud-chat-message is-assistant">
+                  <span class="cloud-chat-avatar">S</span>
+                  <div class="cloud-chat-bubble">
+                    <small>当初的回答</small>
+                    <p v-for="block in selectedQuestionAnswerBlocks" :key="block">{{ block }}</p>
+                  </div>
+                </article>
+              </div>
+              <div class="cloud-history-actions">
+                <button class="primary-button" type="button" @click="continueFromQuestionHistory">
+                  继续从这里追问
+                </button>
+                <button class="paper-button" type="button" @click="focusQuestionEvidence">
+                  看当时证据
+                </button>
+              </div>
+            </template>
+            <p v-else-if="questionDetailLoading">正在打开当初的问答...</p>
+            <p v-else>{{ questionDetailError }}</p>
+          </section>
+        </div>
+      </section>
 
       <div class="graph-overview-grid">
         <article class="space-panel graph-summary-card">
           <div class="section-head compact">
-            <p class="section-kicker">空间摘要</p>
-            <h3>这个空间正在追踪什么</h3>
+            <p class="section-kicker">可以直接问</p>
+            <h3>这个空间能帮你找回什么</h3>
           </div>
           <p>{{ overviewSummary }}</p>
-          <div v-if="overviewProjects.length" class="graph-project-row">
-            <span v-for="project in overviewProjects" :key="project.project" class="graph-stat-chip">
-              {{ project.project }} · {{ project.source_count }} 条材料
-            </span>
+          <div class="space-question-starters">
+            <button
+              v-for="prompt in spacePromptExamples"
+              :key="prompt"
+              type="button"
+              @click="askSuggestedPrompt(prompt)"
+            >
+              {{ prompt }}
+            </button>
           </div>
         </article>
 
         <article class="space-panel graph-summary-card">
           <div class="section-head compact">
-            <p class="section-kicker">最近材料</p>
-            <h3>最近材料</h3>
+            <p class="section-kicker">最近证据</p>
+            <h3>最近保存的材料</h3>
           </div>
           <div v-if="overviewRecentSources.length" class="graph-overview-list">
             <article
@@ -83,8 +257,8 @@
 
         <article class="space-panel graph-summary-card">
           <div class="section-head compact">
-            <p class="section-kicker">关键节点</p>
-            <h3>关键节点</h3>
+            <p class="section-kicker">反复出现</p>
+            <h3>这个空间的主题</h3>
           </div>
           <div v-if="overviewKeyNodes.length" class="graph-overview-list">
             <article
@@ -108,8 +282,8 @@
 
         <article class="space-panel graph-summary-card">
           <div class="section-head compact">
-            <p class="section-kicker">开放问题 / 下一步</p>
-            <h3>开放问题 / 下一步</h3>
+            <p class="section-kicker">下一步</p>
+            <h3>待处理线索</h3>
           </div>
           <div v-if="overviewOpenItems.length" class="graph-overview-list">
             <article
@@ -127,7 +301,7 @@
             </article>
           </div>
           <p v-else class="subtle-empty-state">
-            暂时没有明确开放问题。你可以继续收集材料，或进入专业模式整理连接。
+            暂时没有明确开放问题。你可以继续收集材料，或进入高级审计整理连接。
           </p>
         </article>
       </div>
@@ -217,7 +391,7 @@
             <span>AI 路由建议</span>
             <article v-for="suggestion in suggestions" :key="suggestion.id">
               <small>{{ Math.round(suggestion.confidence * 100) }}%</small>
-              <p>{{ suggestion.reason }}</p>
+              <p>{{ routeSuggestionReasonText(suggestion) }}</p>
               <button class="paper-button" :disabled="busy" @click="$emit('acceptSuggestion', suggestion.id)">接受</button>
               <button class="ghost-button" :disabled="busy" @click="$emit('rejectSuggestion', suggestion.id)">忽略</button>
             </article>
@@ -312,7 +486,7 @@
           </div>
           <div v-else class="empty-canvas">
             <strong>这个空间还没有节点</strong>
-            <p>先去“收集”放入材料，或者从 Inbox 接受一条路由建议。</p>
+            <p>先去“收集”放入材料，或者从待整理接受一条路由建议。</p>
           </div>
 
           <section class="mode-guide">
@@ -369,41 +543,41 @@
         </article>
 
         <aside class="space-panel graph-inspector">
-          <span>Inspector</span>
+          <span>线索详情</span>
           <template v-if="selectedTheme">
             <strong>{{ selectedTheme.label }}</strong>
             <p>{{ selectedTheme.description || selectedTheme.reason || '这个主题还没有说明。' }}</p>
             <dl>
               <div>
-                <dt>Origin</dt>
-                <dd>{{ selectedTheme.origin }}</dd>
+                <dt>来源</dt>
+                <dd>{{ originLabel(selectedTheme.origin) }}</dd>
               </div>
               <div>
-                <dt>Status</dt>
-                <dd>{{ selectedTheme.status }}</dd>
+                <dt>状态</dt>
+                <dd>{{ graphStatusLabel(selectedTheme.status) }}</dd>
               </div>
               <div>
-                <dt>Members</dt>
+                <dt>线索数</dt>
                 <dd>{{ selectedTheme.member_node_ids.length }}</dd>
               </div>
             </dl>
           </template>
 
           <template v-else-if="selectedEdge">
-            <strong>{{ labelFor(selectedEdge.source) }} -> {{ selectedEdge.relation }} -> {{ labelFor(selectedEdge.target) }}</strong>
+            <strong>{{ labelFor(selectedEdge.source) }} → {{ relationLabel(selectedEdge.relation) }} → {{ labelFor(selectedEdge.target) }}</strong>
             <p>{{ selectedEdge.explanation || selectedEdge.weakened_reason || selectedEdge.rejected_reason || '这条边还没有解释。' }}</p>
             <dl>
               <div>
-                <dt>Status</dt>
-                <dd>{{ selectedEdge.status || 'confirmed' }}</dd>
+                <dt>状态</dt>
+                <dd>{{ graphStatusLabel(selectedEdge.status || 'confirmed') }}</dd>
               </div>
               <div>
-                <dt>Origin</dt>
-                <dd>{{ selectedEdge.origin || 'AI-inferred' }}</dd>
+                <dt>来源</dt>
+                <dd>{{ originLabel(selectedEdge.origin || 'AI-inferred') }}</dd>
               </div>
               <div>
-                <dt>Confidence</dt>
-                <dd>{{ Math.round((selectedEdge.confidence ?? 0) * 100) }}%</dd>
+                <dt>可信度</dt>
+                <dd>{{ confidenceLabel(selectedEdge.confidence) }}</dd>
               </div>
             </dl>
           </template>
@@ -413,16 +587,16 @@
             <p>{{ nodeSummary(selectedNode) }}</p>
             <dl>
               <div>
-                <dt>Type</dt>
-                <dd>{{ selectedNode.type }}</dd>
+                <dt>类型</dt>
+                <dd>{{ nodeTypeLabel(selectedNode.type) }}</dd>
               </div>
               <div>
-                <dt>Status</dt>
-                <dd>{{ selectedNode.status || 'confirmed' }}</dd>
+                <dt>状态</dt>
+                <dd>{{ graphStatusLabel(selectedNode.status || 'confirmed') }}</dd>
               </div>
               <div v-if="sourceForSelectedNode">
-                <dt>Why</dt>
-                <dd>{{ sourceForSelectedNode.why_saved_status }}</dd>
+                <dt>保存理由</dt>
+                <dd>{{ sourceToneLabel(sourceForSelectedNode) }}</dd>
               </div>
             </dl>
             <div class="inspector-actions">
@@ -456,7 +630,7 @@
               <label>
                 <small>移动到图谱</small>
                 <select v-model="moveTarget">
-                  <option v-for="item in routableSpaces" :key="item.id" :value="item.id">{{ item.name }}</option>
+                  <option v-for="item in routableSpaces" :key="item.id" :value="item.id">{{ displaySpaceName(item) }}</option>
                 </select>
               </label>
               <button class="paper-button" :disabled="busy || !moveTarget || moveTarget === sourceForSelectedNode.graph_space_id" @click="routeSelected">
@@ -485,7 +659,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ExternalLink,
   GitBranch,
@@ -513,6 +687,8 @@ import type {
   GraphSpace,
   GraphTheme,
   GraphViewMode,
+  SavedQuestion,
+  SavedQuestionDetail,
   Source,
   Suggestion,
 } from '../types'
@@ -525,12 +701,71 @@ type OverviewOpenItem = {
   badge?: string
   tone?: string
 }
+type CloudItemKind = 'question' | 'future' | 'open' | 'source' | 'node'
+type CloudEvidence = {
+  id: string
+  title: string
+}
+type CloudItem = {
+  key: string
+  kind: CloudItemKind
+  kindLabel: string
+  label: string
+  detail: string
+  weight: number
+  tone: string
+  nodeId?: string
+  sourceId?: string
+  questionId?: string
+  question?: string
+  evidenceTitles: CloudEvidence[]
+}
+type CloudDragState = {
+  key: string
+  pointerId: number
+  startX: number
+  startY: number
+  originX: number
+  originY: number
+  active: boolean
+  target: HTMLElement | null
+}
+type CloudDragFrame = {
+  pointerId: number
+  clientX: number
+  clientY: number
+}
+type CloudGraphPoint = {
+  x: number
+  y: number
+}
+type CloudDragInfluence = {
+  x: number
+  y: number
+  strength: number
+}
+type CloudGraphEdge = {
+  id: string
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  active: boolean
+}
+
+const CLOUD_DRAG_THRESHOLD = 4
+const CLOUD_DRAG_INFLUENCE_PULL = 0.28
+const CLOUD_SPRING_RESPONSE = 0.25
+const CLOUD_SPRING_DAMPING = 0.6
+const CLOUD_SPRING_SETTLE_MS = Math.round(CLOUD_SPRING_RESPONSE * 1000 + CLOUD_SPRING_DAMPING * 120 + 98)
+const CLOUD_CLICK_SUPPRESSION_MS = CLOUD_SPRING_SETTLE_MS + 780
 
 const props = defineProps<{
   busy: boolean
   space: GraphSpace | null
   spaces: GraphSpace[]
   sources: Source[]
+  questions: SavedQuestion[]
   graph: GraphPayload
   suggestions: Suggestion[]
 }>()
@@ -546,19 +781,20 @@ const emit = defineEmits<{
 }>()
 
 const viewModes = [
-  { id: 'memory' as const, label: 'Memory Map', icon: markRaw(MapIcon) },
-  { id: 'evidence' as const, label: 'Evidence Path', icon: markRaw(Route) },
-  { id: 'action' as const, label: 'Action Map', icon: markRaw(Layers) },
+  { id: 'memory' as const, label: '记忆脉络', icon: markRaw(MapIcon) },
+  { id: 'evidence' as const, label: '证据路径', icon: markRaw(Route) },
+  { id: 'action' as const, label: '下一步', icon: markRaw(Layers) },
 ]
 
 const interactionModes = [
-  { id: 'arrange' as const, label: 'Arrange', icon: markRaw(Hand) },
-  { id: 'connect' as const, label: 'Connect', icon: markRaw(GitBranch) },
-  { id: 'synthesize' as const, label: 'Synthesize', icon: markRaw(PencilLine) },
-  { id: 'prune' as const, label: 'Prune', icon: markRaw(Scissors) },
+  { id: 'arrange' as const, label: '查看', icon: markRaw(Hand) },
+  { id: 'connect' as const, label: '补连接', icon: markRaw(GitBranch) },
+  { id: 'synthesize' as const, label: '归纳判断', icon: markRaw(PencilLine) },
+  { id: 'prune' as const, label: '纠错', icon: markRaw(Scissors) },
 ]
 
 const stageContainer = ref<HTMLDivElement | null>(null)
+const cloudOrbitElement = ref<HTMLDivElement | null>(null)
 
 const surfaceMode = ref<GraphSurfaceMode>('overview')
 const viewMode = ref<GraphViewMode>('memory')
@@ -568,9 +804,22 @@ const themes = ref<GraphTheme[]>([])
 const selectedNodeIds = ref<string[]>([])
 const selectedEdgeId = ref('')
 const selectedThemeId = ref('')
+const selectedCloudKey = ref('')
 const selectedSource = ref<Source | null>(null)
 const sourceDetail = ref<{ markdown: string; detail?: Source } | null>(null)
 const sourceDetailOpen = ref(false)
+const graphSearchQuery = ref('')
+const selectedQuestionDetail = ref<SavedQuestionDetail | null>(null)
+const questionDetailLoading = ref(false)
+const questionDetailError = ref('')
+const cloudDragOffsets = ref<Record<string, { x: number; y: number }>>({})
+const cloudRecoilOffsets = ref<Record<string, CloudDragInfluence>>({})
+const cloudRecoilKey = ref('')
+const cloudReturnKey = ref('')
+const draggingCloudKey = ref('')
+const activeCloudDrag = ref<CloudDragState | null>(null)
+const suppressedCloudClickKey = ref('')
+const cloudOrbitSize = ref({ width: 560, height: 420 })
 const sourceFilter = ref('')
 const savingLayout = ref(false)
 const graphExpanded = ref(false)
@@ -586,6 +835,15 @@ const graphZoom = ref(1)
 const graphPan = ref({ x: 0, y: 0 })
 const panningGraph = ref(false)
 const lastPanPoint = ref({ x: 0, y: 0 })
+let cloudResizeObserver: ResizeObserver | null = null
+let cloudDragListenersAttached = false
+let pendingCloudDragFrame: CloudDragFrame | null = null
+let cloudDragAnimationFrame = 0
+let cloudSpringAnimationFrame = 0
+let cloudSpringStartedAt = 0
+let cloudSpringEntries: [string, CloudDragInfluence][] = []
+let suppressedCloudClickUntil = 0
+const questionDetailCache = new Map<string, SavedQuestionDetail>()
 
 const edgeRelation = ref('related_to')
 const edgeReason = ref('')
@@ -602,9 +860,10 @@ const editLoops = ref('')
 const editSpaceName = ref('')
 const editSpacePurpose = ref('')
 const editSpaceDescription = ref('')
-const editSpaceColor = ref('#315f9f')
+const editSpaceColor = ref('#b0501e')
 
 const graphSpaceId = computed(() => props.space?.id || 'all')
+const spaceDisplayName = computed(() => props.space ? displaySpaceName(props.space) : '记忆空间')
 const routableSpaces = computed(() => props.spaces.filter((space) => space.status === 'active' && space.id !== 'inbox'))
 const insights = computed<GraphInsights>(() => props.graph.insights || {})
 const projectClusters = computed<GraphProjectCluster[]>(() => insights.value.project_clusters || [])
@@ -693,6 +952,225 @@ const sourceForSelectedNode = computed(() => {
   if (!sourceIdForSelectedNode.value) return null
   return props.sources.find((source) => source.id === sourceIdForSelectedNode.value) || null
 })
+const userStatedSourceCount = computed(() => {
+  return props.sources.filter((source) => source.why_saved_status === 'user-stated').length
+})
+const aiInferredSourceCount = computed(() => {
+  return props.sources.filter((source) => source.why_saved_status === 'AI-inferred').length
+})
+const missingReasonCount = computed(() => {
+  return props.sources.filter((source) => !source.why_saved?.trim()).length
+})
+const reviewQueueCount = computed(() => {
+  return props.suggestions.length + reviewPaths.value.length + aiInferredSourceCount.value + missingReasonCount.value
+})
+const latestActivityLabel = computed(() => {
+  const sourceTime = [...props.sources]
+    .map((source) => source.imported_at)
+    .filter(Boolean)
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0]
+  const value = sourceTime || props.space?.updated_at || ''
+  return value ? formatDate(value) : ''
+})
+const graphHeaderStats = computed(() => {
+  const stats = [`${props.sources.length || props.space?.source_count || 0} 份材料`]
+  if (userStatedSourceCount.value) stats.push(`${userStatedSourceCount.value} 条用户原话`)
+  if (overviewOpenCount.value) stats.push(`${overviewOpenCount.value} 个待处理`)
+  if (latestActivityLabel.value) stats.push(`最近 ${latestActivityLabel.value}`)
+  return stats
+})
+const sourceIdsInSpace = computed(() => new Set(props.sources.map((source) => source.id)))
+const questionsForSpace = computed(() => {
+  if (!sourceIdsInSpace.value.size) return props.questions
+  return props.questions.filter((question) => {
+    if (!question.evidence_source_ids?.length) return true
+    return question.evidence_source_ids.some((sourceId) => sourceIdsInSpace.value.has(sourceId))
+  })
+})
+const cloudItems = computed<CloudItem[]>(() => {
+  const items: CloudItem[] = []
+
+  for (const question of questionsForSpace.value) {
+    const evidenceTitles = evidenceForSourceIds(question.evidence_source_ids)
+    pushCloudItem(items, {
+      key: `question:${question.id}`,
+      kind: 'question',
+      kindLabel: '保存过的问题',
+      label: question.question || '未命名问题',
+      detail: evidenceTitles.length
+        ? `这是一次真实追问历史，回答时引用了 ${evidenceTitles.length} 条证据。`
+        : '这是一次真实追问历史，可以作为重新进入记忆的入口。',
+      weight: 6 + evidenceTitles.length,
+      tone: 'tone-graph',
+      questionId: question.id,
+      question: question.question,
+      evidenceTitles,
+    })
+  }
+
+  for (const source of props.sources) {
+    for (const question of source.future_recall_questions || []) {
+      pushCloudItem(items, {
+        key: `future:${source.id}:${hashText(question)}`,
+        kind: 'future',
+        kindLabel: '材料暗示的问题',
+        label: question,
+        detail: `这条问题来自「${source.title}」的 future_recall_questions，用来提示以后怎么找回。`,
+        weight: 5,
+        tone: source.why_saved_status === 'user-stated' ? 'tone-user' : 'tone-ai',
+        sourceId: source.id,
+        question,
+        evidenceTitles: [{ id: source.id, title: source.title }],
+      })
+    }
+
+    for (const openLoop of source.open_loops || []) {
+      pushCloudItem(items, {
+        key: `open:${source.id}:${hashText(openLoop)}`,
+        kind: 'open',
+        kindLabel: '开放问题',
+        label: openLoop,
+        detail: `这是「${source.title}」留下的未闭环事项，适合继续追问或整理。`,
+        weight: 5,
+        tone: 'tone-ai',
+        sourceId: source.id,
+        question: openLoop,
+        evidenceTitles: [{ id: source.id, title: source.title }],
+      })
+    }
+
+    pushCloudItem(items, {
+      key: `source:${source.id}`,
+      kind: 'source',
+      kindLabel: '材料',
+      label: source.title,
+      detail: sourcePreview(source),
+      weight: 3 + (source.why_saved_status === 'user-stated' ? 1 : 0) + Math.min(2, source.open_loops?.length || 0),
+      tone: sourceToneClass(source),
+      sourceId: source.id,
+      evidenceTitles: [{ id: source.id, title: source.title }],
+    })
+  }
+
+  for (const node of overviewKeyNodes.value) {
+    const sourceId = sourceIdForNode(node)
+    const source = sourceId ? props.sources.find((item) => item.id === sourceId) : null
+    pushCloudItem(items, {
+      key: `node:${node.id}`,
+      kind: 'node',
+      kindLabel: nodeTypeLabel(node.type),
+      label: node.label,
+      detail: keyNodeSummary(node),
+      weight: 3 + Math.min(4, adjacencyCount.value.get(node.id) || 0),
+      tone: nodeToneClass(node),
+      nodeId: node.id,
+      sourceId,
+      evidenceTitles: source ? [{ id: source.id, title: source.title }] : [],
+    })
+  }
+
+  return items.sort((left, right) => right.weight - left.weight).slice(0, 36)
+})
+const visibleCloudItems = computed(() => {
+  const query = normalizeSearchText(graphSearchQuery.value)
+  return cloudItems.value
+    .filter((item) => !query || cloudSearchText(item).includes(query))
+    .sort((left, right) => {
+      if (!query) return right.weight - left.weight
+      return cloudMatchScore(right, query) - cloudMatchScore(left, query)
+    })
+    .slice(0, 18)
+})
+const cloudGraphPoints = computed<Record<string, CloudGraphPoint>>(() => {
+  const next: Record<string, CloudGraphPoint> = {}
+  visibleCloudItems.value.forEach((item, index) => {
+    next[item.key] = cloudGraphPoint(item, index)
+  })
+  return next
+})
+const cloudDragInfluenceOffsets = computed<Record<string, CloudDragInfluence>>(() => {
+  const activeOffsets = activeCloudDragInfluenceOffsets()
+  if (Object.keys(activeOffsets).length) return activeOffsets
+  return cloudRecoilOffsets.value
+})
+const selectedCloudItem = computed(() => {
+  if (!selectedCloudKey.value) return null
+  return visibleCloudItems.value.find((item) => item.key === selectedCloudKey.value) || null
+})
+const selectedCloudPoint = computed(() => {
+  if (!selectedCloudKey.value) return null
+  if (!selectedCloudItem.value) return null
+  return cloudGraphPoints.value[selectedCloudItem.value.key] || null
+})
+const selectedQuestionAnswerBlocks = computed(() => splitHistoryAnswer(selectedQuestionDetail.value?.answer || ''))
+
+function activeCloudDragInfluenceOffsets() {
+  const drag = activeCloudDrag.value
+  if (!drag?.active) return {}
+
+  const anchorIndex = visibleCloudItems.value.findIndex((item) => item.key === drag.key)
+  const anchor = visibleCloudItems.value[anchorIndex]
+  if (!anchor) return {}
+
+  const anchorOffset = cloudDragOffsets.value[drag.key] || { x: drag.originX, y: drag.originY }
+  const deltaX = anchorOffset.x - drag.originX
+  const deltaY = anchorOffset.y - drag.originY
+  if (Math.hypot(deltaX, deltaY) < 1) return {}
+
+  const query = normalizeSearchText(graphSearchQuery.value)
+  const entries = visibleCloudItems.value.flatMap((item, index) => {
+    if (item.key === drag.key) return []
+    const strength = cloudElasticInfluence(anchor, item, query, anchorIndex, index)
+    if (strength <= 0) return []
+    return [[item.key, {
+      x: roundCloudMotion(deltaX * strength * CLOUD_DRAG_INFLUENCE_PULL),
+      y: roundCloudMotion(deltaY * strength * CLOUD_DRAG_INFLUENCE_PULL),
+      strength,
+    }] as const]
+  })
+  return Object.fromEntries(entries.sort(([, left], [, right]) => right.strength - left.strength).slice(0, 6))
+}
+const cloudFocusLabelStyle = computed(() => {
+  const point = selectedCloudPoint.value
+  if (!point) return {}
+  return {
+    left: `${point.x}px`,
+    top: `${point.y}px`,
+  }
+})
+const cloudConstellationEdges = computed<CloudGraphEdge[]>(() => {
+  const activeDrag = activeCloudDrag.value?.active ? activeCloudDrag.value : null
+  const anchor = activeDrag
+    ? visibleCloudItems.value.find((item) => item.key === activeDrag.key) || selectedCloudItem.value
+    : selectedCloudKey.value ? selectedCloudItem.value : null
+  const anchorPoint = anchor ? cloudGraphPoints.value[anchor.key] : null
+  if (!anchor || !anchorPoint) return []
+
+  const query = normalizeSearchText(graphSearchQuery.value)
+  return visibleCloudItems.value
+    .filter((item) => item.key !== anchor.key)
+    .map((item) => {
+      const point = cloudGraphPoints.value[item.key]
+      return {
+        item,
+        point,
+        score: cloudAffinityScore(anchor, item, query),
+      }
+    })
+    .filter((entry) => entry.point && entry.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 7)
+    .map(({ item, point }) => ({
+      id: `${anchor.key}->${item.key}`,
+      x1: anchorPoint.x,
+      y1: anchorPoint.y,
+      x2: point.x,
+      y2: point.y,
+      active: Boolean(activeDrag)
+        ? item.key === activeDrag.key || Boolean(cloudDragInfluenceOffsets.value[item.key])
+        : isCloudMatch(item) || isCloudMatch(anchor),
+    }))
+})
 const overviewProjects = computed(() => projectClusters.value.slice(0, 3))
 const overviewRecentSources = computed(() => {
   return [...props.sources]
@@ -723,7 +1201,7 @@ const overviewOpenItems = computed<OverviewOpenItem[]>(() => {
   }))
   const suggestionItems = props.suggestions.slice(0, 3).map((suggestion) => ({
     key: `suggestion:${suggestion.id}`,
-    title: suggestion.reason,
+    title: routeSuggestionReasonText(suggestion),
     detail: `${Math.round(suggestion.confidence * 100)}% 置信度，等待你确认是否采纳。`,
     badge: 'graph-path / 图谱建议',
     tone: 'tone-graph',
@@ -745,6 +1223,28 @@ const overviewOpenCount = computed(() => {
 })
 const overviewOpenLabel = computed(() => {
   return props.suggestions.length ? '建议' : '开放问题'
+})
+const openLoopGuidance = computed(() => {
+  if (openLoopHotspots.value.length) {
+    const count = openLoopHotspots.value[0]?.count || 1
+    return count > 1 ? `先看重复出现 ${count} 次的问题。` : '先处理最像下一步的开放问题。'
+  }
+  if (props.suggestions.length) return '先确认系统建议是否符合你的真实意图。'
+  if (reviewPaths.value.length) return '先检查最有价值的证据路径。'
+  if (missingReasonCount.value) return '先补上材料为什么值得保存。'
+  return '继续保存材料后，这里会出现下一步。'
+})
+const spacePromptExamples = computed(() => {
+  const prompts: string[] = []
+  const leadProject = overviewProjects.value[0]?.project || overviewKeyNodes.value.find((node) => node.type === 'project')?.label
+  const leadOpenLoop = overviewOpenItems.value[0]?.title
+  const leadSource = overviewRecentSources.value[0]?.title
+  if (leadProject) prompts.push(`我之前为什么关注「${promptSubject(leadProject)}」？`)
+  if (leadOpenLoop) prompts.push(`这个未闭环问题下一步该怎么处理：「${promptSubject(leadOpenLoop)}」？`)
+  if (leadSource) prompts.push(`「${promptSubject(leadSource)}」里哪些证据支持我当时的判断？`)
+  prompts.push('这个空间里最重要的旧判断是什么？')
+  prompts.push('哪些证据是用户原话，哪些是 AI 推断？')
+  return [...new Set(prompts)].slice(0, 3)
 })
 const spaceDescription = computed(() => {
   if (props.space?.id === 'inbox') {
@@ -802,12 +1302,14 @@ watch(() => props.space, (space) => {
   editSpaceName.value = space?.name || ''
   editSpacePurpose.value = space?.purpose || ''
   editSpaceDescription.value = space?.description || ''
-  editSpaceColor.value = space?.color || '#315f9f'
+  editSpaceColor.value = space?.color || '#b0501e'
   surfaceMode.value = 'overview'
   selectedSource.value = null
   selectedNodeIds.value = []
   selectedEdgeId.value = ''
   selectedThemeId.value = ''
+  selectedCloudKey.value = ''
+  graphSearchQuery.value = ''
   graphExpanded.value = false
   graphFocusNodeId.value = ''
   resetGraphView()
@@ -851,7 +1353,35 @@ watch([() => props.graph.nodes, layoutPositions, viewMode, graphFocusNodeId], ()
   syncNodePositions()
 }, { deep: true, immediate: true })
 
+watch(cloudOrbitElement, (element, previous) => {
+  if (previous) cloudResizeObserver?.unobserve(previous)
+  if (!element) return
+  cloudResizeObserver?.observe(element)
+  syncCloudOrbitSize()
+}, { flush: 'post' })
+
+watch(visibleCloudItems, (items) => {
+  if (!items.length) {
+    selectedCloudKey.value = ''
+    return
+  }
+  if (!items.some((item) => item.key === selectedCloudKey.value)) {
+    selectedCloudKey.value = ''
+  }
+}, { immediate: true })
+
+onMounted(() => {
+  cloudResizeObserver = new ResizeObserver(() => syncCloudOrbitSize())
+  if (cloudOrbitElement.value) cloudResizeObserver.observe(cloudOrbitElement.value)
+  nextTick(syncCloudOrbitSize)
+})
+
 onBeforeUnmount(() => {
+  cloudResizeObserver?.disconnect()
+  clearPendingCloudDragFrame()
+  clearCloudRecoil()
+  clearCloudReturn()
+  cancelCloudDrag()
   stopNodeDrag()
   stopGraphPan()
 })
@@ -1082,8 +1612,26 @@ function saveSpace() {
   })
 }
 
+function displaySpaceName(space: GraphSpace) {
+  if (space.id === 'inbox') return '待整理'
+  if (space.id === 'default') return '主记忆'
+  return space.name
+}
+
+function routeSuggestionReasonText(suggestion: Suggestion) {
+  return sanitizeBuiltInSpaceNames(suggestion.reason)
+}
+
+function sanitizeBuiltInSpaceNames(text = '') {
+  return text
+    .replace(/\bInbox\b/g, '待整理')
+    .replace(/\binbox\b/g, '待整理')
+    .replace(/\bDefault\b/g, '主记忆')
+    .replace(/\bdefault\b/g, '主记忆')
+}
+
 function askFromSpace() {
-  emit('askFromGraph', '这个空间最近在追踪什么问题？')
+  emit('askFromGraph', '帮我找回这个空间里最重要的旧判断和证据。')
 }
 
 function openActionWorkbench() {
@@ -1091,6 +1639,636 @@ function openActionWorkbench() {
   viewMode.value = 'action'
   interactionMode.value = 'arrange'
   clearSelection()
+}
+
+function openAuditWorkbench() {
+  surfaceMode.value = 'workbench'
+  viewMode.value = 'evidence'
+  interactionMode.value = 'arrange'
+  clearSelection()
+}
+
+function askSuggestedPrompt(prompt: string) {
+  emit('askFromGraph', prompt)
+}
+
+function askCloudSearch() {
+  const query = graphSearchQuery.value.trim()
+  if (!query) {
+    askFromSpace()
+    return
+  }
+  emit('askFromGraph', `帮我从这个空间的记忆星图里找「${query}」相关线索。`)
+}
+
+function askFromCloud(item: CloudItem) {
+  const question = item.question || `我之前关于「${item.label}」想过什么？`
+  emit('askFromGraph', question)
+}
+
+function continueFromCloud(item: CloudItem) {
+  if (item.kind === 'question') {
+    selectedCloudKey.value = item.key
+    void openCloudQuestionHistory(item)
+    return
+  }
+  askFromCloud(item)
+}
+
+async function openCloudQuestionHistory(item: CloudItem) {
+  if (!item.questionId) return
+  selectedCloudKey.value = item.key
+  questionDetailError.value = ''
+  const cached = questionDetailCache.get(item.questionId)
+  if (cached) {
+    selectedQuestionDetail.value = cached
+    return
+  }
+  questionDetailLoading.value = true
+  try {
+    const detail = await api<SavedQuestionDetail>(`/api/questions/${encodeURIComponent(item.questionId)}`)
+    questionDetailCache.set(item.questionId, detail)
+    selectedQuestionDetail.value = detail
+  } catch (error) {
+    questionDetailError.value = `历史问答打开失败：${messageFromError(error)}`
+  } finally {
+    questionDetailLoading.value = false
+  }
+}
+
+function closeQuestionHistory() {
+  selectedQuestionDetail.value = null
+  questionDetailLoading.value = false
+  questionDetailError.value = ''
+}
+
+function continueFromQuestionHistory() {
+  const question = selectedQuestionDetail.value?.question || selectedCloudItem.value?.question
+  if (!question) return
+  emit('askFromGraph', question)
+}
+
+function focusQuestionEvidence() {
+  const detail = selectedQuestionDetail.value
+  if (!detail?.evidence_source_ids.length) return
+  const source = props.sources.find((item) => detail.evidence_source_ids.includes(item.id))
+  if (source) {
+    focusCloudItem({
+      key: `source:${source.id}`,
+      kind: 'source',
+      kindLabel: '材料',
+      label: source.title,
+      detail: sourcePreview(source),
+      weight: 4,
+      tone: sourceToneClass(source),
+      sourceId: source.id,
+      evidenceTitles: [{ id: source.id, title: source.title }],
+    })
+  }
+}
+
+function focusCloudItem(item: CloudItem) {
+  surfaceMode.value = 'workbench'
+  viewMode.value = item.kind === 'open' ? 'action' : 'evidence'
+  interactionMode.value = 'arrange'
+  selectedCloudKey.value = item.key
+  if (item.nodeId) {
+    graphFocusNodeId.value = item.nodeId
+    selectedNodeIds.value = [item.nodeId]
+    selectedEdgeId.value = ''
+    selectedThemeId.value = ''
+    return
+  }
+  if (item.sourceId) {
+    const source = props.sources.find((sourceItem) => sourceItem.id === item.sourceId)
+    if (source) selectSource(source)
+  }
+}
+
+function selectSourceById(sourceId: string) {
+  const source = props.sources.find((item) => item.id === sourceId)
+  if (source) selectSource(source)
+}
+
+function clearCloudSearch() {
+  graphSearchQuery.value = ''
+}
+
+function syncCloudOrbitSize() {
+  const element = cloudOrbitElement.value
+  if (!element) return
+  const rect = element.getBoundingClientRect()
+  cloudOrbitSize.value = {
+    width: Math.max(320, Math.round(element.clientWidth || rect.width)),
+    height: Math.max(320, Math.round(element.clientHeight || rect.height)),
+  }
+}
+
+function cloudGraphPoint(item: CloudItem, index: number) {
+  const base = cloudNodeBasePosition(index)
+  const dragOffset = cloudRenderOffset(item.key)
+  const width = cloudOrbitSize.value.width
+  const height = cloudOrbitSize.value.height
+  return {
+    x: roundCloudMotion((base.left / 100) * width + dragOffset.x),
+    y: roundCloudMotion((base.top / 100) * height + dragOffset.y),
+  }
+}
+
+function cloudRenderOffset(key: string) {
+  const persisted = cloudDragOffsets.value[key] || { x: 0, y: 0 }
+  const influence = cloudInfluenceOffset(key)
+  const springOwnsOffset = Boolean(cloudReturnKey.value || cloudRecoilKey.value) && Boolean(cloudDragOffsets.value[key])
+  return {
+    x: roundCloudMotion(persisted.x + (springOwnsOffset ? 0 : influence.x)),
+    y: roundCloudMotion(persisted.y + (springOwnsOffset ? 0 : influence.y)),
+  }
+}
+
+function cloudInfluenceOffset(key: string) {
+  return cloudDragInfluenceOffsets.value[key] || { x: 0, y: 0, strength: 0 }
+}
+
+function roundCloudMotion(value: number) {
+  if (Math.abs(value) < 0.01) return 0
+  return Number(value.toFixed(2))
+}
+
+function cloudNodeBasePosition(index: number) {
+  const positions = [
+    [50, 50],
+    [43, 36],
+    [58, 35],
+    [39, 62],
+    [61, 62],
+    [33, 49],
+    [69, 49],
+    [50, 26],
+    [50, 72],
+    [28, 34],
+    [72, 34],
+    [30, 74],
+    [72, 74],
+    [41, 23],
+    [59, 24],
+    [42, 78],
+    [61, 77],
+    [24, 53],
+  ]
+  const [left, top] = positions[index % positions.length]
+  return { left, top }
+}
+
+function isCloudMatch(item: CloudItem) {
+  const query = normalizeSearchText(graphSearchQuery.value)
+  return !query || cloudSearchText(item).includes(query)
+}
+
+function cloudAffinityScore(anchor: CloudItem, candidate: CloudItem, query: string) {
+  let score = 0
+  if (anchor.kind === candidate.kind) score += 2
+  if (anchor.tone === candidate.tone) score += 1
+  if (anchor.sourceId && anchor.sourceId === candidate.sourceId) score += 5
+  if (anchor.nodeId && anchor.nodeId === candidate.nodeId) score += 4
+  if (query && cloudSearchText(candidate).includes(query)) score += 6
+  score += sharedCloudEvidenceCount(anchor, candidate) * 4
+  score += Math.min(3, candidate.weight / 3)
+  return score
+}
+
+function cloudElasticInfluence(
+  anchor: CloudItem,
+  candidate: CloudItem,
+  query: string,
+  anchorIndex: number,
+  candidateIndex: number,
+) {
+  const anchorBase = cloudNodeBasePosition(anchorIndex)
+  const candidateBase = cloudNodeBasePosition(candidateIndex)
+  const distanceX = ((candidateBase.left - anchorBase.left) / 100) * cloudOrbitSize.value.width
+  const distanceY = ((candidateBase.top - anchorBase.top) / 100) * cloudOrbitSize.value.height
+  const distance = Math.hypot(distanceX, distanceY)
+  const influenceRadius = Math.max(220, Math.min(cloudOrbitSize.value.width, cloudOrbitSize.value.height) * 0.72)
+  const distancePull = Math.max(0, 1 - distance / influenceRadius)
+  const affinity = cloudAffinityScore(anchor, candidate, query)
+  const semanticPull = Math.min(0.22, Math.max(0, affinity - 2) / 32)
+  const evidencePull = sharedCloudEvidenceCount(anchor, candidate) > 0 ? 0.1 : 0
+  const sourcePull = anchor.sourceId && anchor.sourceId === candidate.sourceId ? 0.12 : 0
+  const searchPull = query && cloudSearchText(candidate).includes(query) ? 0.08 : 0
+  const kindPull = anchor.kind === candidate.kind ? 0.04 : 0
+  const strength = Math.min(0.38, distancePull * 0.2 + semanticPull + evidencePull + sourcePull + searchPull + kindPull)
+  return strength >= 0.12 ? Number(strength.toFixed(3)) : 0
+}
+
+function sharedCloudEvidenceCount(left: CloudItem, right: CloudItem) {
+  const rightIds = new Set(right.evidenceTitles.map((item) => item.id))
+  return left.evidenceTitles.filter((item) => rightIds.has(item.id)).length
+}
+
+async function selectCloudNode(event: MouseEvent, item: CloudItem) {
+  if (shouldSuppressCloudClick(item)) {
+    event.preventDefault()
+    return
+  }
+  selectedCloudKey.value = item.key
+  if (item.kind === 'question') {
+    await openCloudQuestionHistory(item)
+    return
+  }
+  closeQuestionHistory()
+}
+
+function shouldSuppressCloudClick(item: CloudItem) {
+  const now = performanceNow()
+  if (suppressedCloudClickKey.value && now >= suppressedCloudClickUntil) {
+    suppressedCloudClickKey.value = ''
+    suppressedCloudClickUntil = 0
+  }
+  return suppressedCloudClickKey.value === item.key && now < suppressedCloudClickUntil
+}
+
+function suppressCloudClick(key: string) {
+  suppressedCloudClickKey.value = key
+  suppressedCloudClickUntil = performanceNow() + CLOUD_CLICK_SUPPRESSION_MS
+  window.setTimeout(() => {
+    if (suppressedCloudClickKey.value === key && performanceNow() >= suppressedCloudClickUntil) {
+      suppressedCloudClickKey.value = ''
+      suppressedCloudClickUntil = 0
+    }
+  }, CLOUD_CLICK_SUPPRESSION_MS)
+}
+
+function performanceNow() {
+  return window.performance?.now?.() ?? Date.now()
+}
+
+function startCloudDrag(event: PointerEvent, item: CloudItem) {
+  if (event.button !== 0) return
+  if ('isPrimary' in event && !event.isPrimary) return
+  beginCloudDrag(event, item, event.pointerId)
+  const drag = activeCloudDrag.value
+  if (drag?.pointerId === event.pointerId) {
+    drag.target?.setPointerCapture?.(event.pointerId)
+  }
+}
+
+function beginCloudDrag(event: PointerEvent, item: CloudItem, pointerId: number) {
+  clearCloudRecoil()
+  clearPendingCloudDragFrame()
+  clearCloudDragOffsets()
+  const existing = cloudDragOffsets.value[item.key] || { x: 0, y: 0 }
+  const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  selectedCloudKey.value = item.key
+  activeCloudDrag.value = {
+    key: item.key,
+    pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: existing.x,
+    originY: existing.y,
+    active: false,
+    target,
+  }
+  attachCloudDragListeners()
+}
+
+function moveCloudDrag(event: PointerEvent) {
+  moveCloudDragFrame(event, event.pointerId)
+}
+
+function moveCloudDragFrame(event: PointerEvent, pointerId: number) {
+  const drag = activeCloudDrag.value
+  if (!drag || drag.pointerId !== pointerId) return
+  event.preventDefault()
+  pendingCloudDragFrame = {
+    pointerId,
+    clientX: event.clientX,
+    clientY: event.clientY,
+  }
+  if (!cloudDragAnimationFrame) {
+    cloudDragAnimationFrame = window.requestAnimationFrame(applyPendingCloudDragFrame)
+  }
+}
+
+function applyPendingCloudDragFrame() {
+  cloudDragAnimationFrame = 0
+  const frame = pendingCloudDragFrame
+  pendingCloudDragFrame = null
+  if (!frame) return
+
+  const drag = activeCloudDrag.value
+  if (!drag || drag.pointerId !== frame.pointerId) return
+
+  const deltaX = frame.clientX - drag.startX
+  const deltaY = frame.clientY - drag.startY
+  if (!drag.active && Math.hypot(deltaX, deltaY) >= CLOUD_DRAG_THRESHOLD) {
+    drag.active = true
+    draggingCloudKey.value = drag.key
+  }
+
+  if (!drag.active) return
+  cloudDragOffsets.value = {
+    [drag.key]: {
+      x: roundCloudMotion(drag.originX + deltaX),
+      y: roundCloudMotion(drag.originY + deltaY),
+    },
+  }
+}
+
+function endCloudDrag(event: PointerEvent) {
+  finishCloudDrag(event, event.pointerId)
+}
+
+function finishCloudDrag(event: PointerEvent, pointerId: number) {
+  const drag = activeCloudDrag.value
+  if (!drag || drag.pointerId !== pointerId) return
+  flushPendingCloudDragFrame()
+  const releaseOffsets = drag.active ? captureCloudReleaseOffsets(drag.key) : {}
+  detachCloudDragListeners()
+  const wasActive = drag.active
+  activeCloudDrag.value = null
+  draggingCloudKey.value = ''
+  releaseCloudPointer(drag, pointerId)
+  if (wasActive) {
+    startCloudSpringReturn(drag.key, releaseOffsets)
+    suppressCloudClick(drag.key)
+    return
+  }
+}
+
+function cancelCloudDrag(event?: PointerEvent) {
+  const drag = activeCloudDrag.value
+  const releaseOffsets = drag?.active ? captureCloudReleaseOffsets(drag.key) : {}
+  detachCloudDragListeners()
+  clearPendingCloudDragFrame()
+  activeCloudDrag.value = null
+  draggingCloudKey.value = ''
+  if (drag) releaseCloudPointer(drag, event?.pointerId ?? drag.pointerId)
+  if (drag?.active) {
+    startCloudSpringReturn(drag.key, releaseOffsets)
+  }
+}
+
+function handleCloudLostPointerCapture(event: PointerEvent) {
+  const drag = activeCloudDrag.value
+  if (!drag || drag.pointerId !== event.pointerId) return
+  cancelCloudDrag(event)
+}
+
+function attachCloudDragListeners() {
+  if (cloudDragListenersAttached) return
+  window.addEventListener('pointermove', moveCloudDrag)
+  window.addEventListener('pointerup', endCloudDrag)
+  window.addEventListener('pointercancel', cancelCloudDrag)
+  cloudDragListenersAttached = true
+}
+
+function detachCloudDragListeners() {
+  if (!cloudDragListenersAttached) return
+  window.removeEventListener('pointermove', moveCloudDrag)
+  window.removeEventListener('pointerup', endCloudDrag)
+  window.removeEventListener('pointercancel', cancelCloudDrag)
+  cloudDragListenersAttached = false
+}
+
+function releaseCloudPointer(drag: CloudDragState, pointerId: number) {
+  if (!drag.target?.hasPointerCapture?.(pointerId)) return
+  drag.target.releasePointerCapture(pointerId)
+}
+
+function flushPendingCloudDragFrame() {
+  if (cloudDragAnimationFrame) {
+    window.cancelAnimationFrame(cloudDragAnimationFrame)
+    cloudDragAnimationFrame = 0
+  }
+  applyPendingCloudDragFrame()
+}
+
+function clearPendingCloudDragFrame() {
+  if (cloudDragAnimationFrame) {
+    window.cancelAnimationFrame(cloudDragAnimationFrame)
+    cloudDragAnimationFrame = 0
+  }
+  pendingCloudDragFrame = null
+}
+
+function captureCloudReleaseOffsets(anchorKey: string) {
+  const next: Record<string, CloudDragInfluence> = {}
+  const activeOffsets = cloudDragInfluenceOffsets.value
+  for (const item of visibleCloudItems.value) {
+    const offset = cloudRenderOffset(item.key)
+    if (Math.hypot(offset.x, offset.y) < 0.5) continue
+    const influence = activeOffsets[item.key]
+    const strength = item.key === anchorKey ? 1 : Math.max(0.08, influence?.strength || 0.12)
+    next[item.key] = {
+      x: offset.x,
+      y: offset.y,
+      strength,
+    }
+  }
+  return next
+}
+
+function startCloudSpringReturn(key: string, offsets: Record<string, CloudDragInfluence>) {
+  clearCloudRecoil()
+  clearCloudReturn()
+  const entries = Object.entries(offsets).filter(([, offset]) => Math.hypot(offset.x, offset.y) >= 0.5)
+  if (!entries.length) {
+    clearCloudDragOffsets()
+    return
+  }
+  cloudRecoilKey.value = key
+  cloudReturnKey.value = key
+  cloudSpringEntries = entries
+  cloudSpringStartedAt = performanceNow()
+  cloudDragOffsets.value = Object.fromEntries(
+    entries.map(([entryKey, offset]) => [entryKey, { x: offset.x, y: offset.y }]),
+  )
+  cloudRecoilOffsets.value = Object.fromEntries(entries)
+  cloudSpringAnimationFrame = window.requestAnimationFrame(stepCloudSpringReturn)
+}
+
+function stepCloudSpringReturn(now = performanceNow()) {
+  cloudSpringAnimationFrame = 0
+  if (!cloudSpringEntries.length) {
+    finishCloudSpringReturn()
+    return
+  }
+  const elapsedSeconds = Math.max(0, (now - cloudSpringStartedAt) / 1000)
+  const multiplier = cloudSpringReturnMultiplier(elapsedSeconds)
+  const nextOffsets: Record<string, { x: number; y: number }> = {}
+  const nextRecoil: Record<string, CloudDragInfluence> = {}
+  let maxDistance = 0
+
+  for (const [entryKey, offset] of cloudSpringEntries) {
+    const x = roundCloudMotion(offset.x * multiplier)
+    const y = roundCloudMotion(offset.y * multiplier)
+    maxDistance = Math.max(maxDistance, Math.hypot(x, y))
+    nextOffsets[entryKey] = { x, y }
+    nextRecoil[entryKey] = { x, y, strength: offset.strength }
+  }
+
+  cloudDragOffsets.value = nextOffsets
+  cloudRecoilOffsets.value = nextRecoil
+
+  if (elapsedSeconds >= CLOUD_SPRING_SETTLE_MS / 1000 || maxDistance < 0.35) {
+    finishCloudSpringReturn()
+    return
+  }
+  cloudSpringAnimationFrame = window.requestAnimationFrame(stepCloudSpringReturn)
+}
+
+function cloudSpringReturnMultiplier(elapsedSeconds: number) {
+  const decay = Math.exp(-7.4 * elapsedSeconds)
+  return Number((decay * Math.cos(18 * elapsedSeconds)).toFixed(4))
+}
+
+function finishCloudSpringReturn() {
+  if (cloudSpringAnimationFrame) {
+    window.cancelAnimationFrame(cloudSpringAnimationFrame)
+    cloudSpringAnimationFrame = 0
+  }
+  cloudSpringEntries = []
+  cloudSpringStartedAt = 0
+  clearCloudDragOffsets()
+  cloudRecoilOffsets.value = {}
+  cloudRecoilKey.value = ''
+  cloudReturnKey.value = ''
+}
+
+function clearCloudReturn() {
+  if (cloudSpringAnimationFrame) {
+    window.cancelAnimationFrame(cloudSpringAnimationFrame)
+    cloudSpringAnimationFrame = 0
+  }
+  cloudSpringEntries = []
+  cloudSpringStartedAt = 0
+  cloudReturnKey.value = ''
+}
+
+function clearCloudDragOffsets() {
+  cloudDragOffsets.value = {}
+}
+
+function clearCloudRecoil() {
+  clearCloudReturn()
+  cloudRecoilOffsets.value = {}
+  cloudRecoilKey.value = ''
+}
+
+function evidenceForSourceIds(sourceIds: string[]) {
+  return sourceIds
+    .map((sourceId) => props.sources.find((source) => source.id === sourceId))
+    .filter((source): source is Source => Boolean(source))
+    .map((source) => ({ id: source.id, title: source.title }))
+}
+
+function pushCloudItem(items: CloudItem[], item: CloudItem) {
+  const normalized = normalizeSearchText(item.label)
+  const existing = items.find((candidate) => normalizeSearchText(candidate.label) === normalized && candidate.kind === item.kind)
+  if (!existing) {
+    items.push(item)
+    return
+  }
+  existing.weight = Math.max(existing.weight, item.weight)
+  existing.evidenceTitles = mergeEvidence(existing.evidenceTitles, item.evidenceTitles)
+  if (!existing.detail.includes(item.detail)) {
+    existing.detail = `${existing.detail} ${item.detail}`
+  }
+}
+
+function mergeEvidence(left: CloudEvidence[], right: CloudEvidence[]) {
+  const byId = new Map(left.map((item) => [item.id, item]))
+  for (const item of right) byId.set(item.id, item)
+  return [...byId.values()].slice(0, 4)
+}
+
+function cloudSearchText(item: CloudItem) {
+  return normalizeSearchText([
+    item.label,
+    item.detail,
+    item.kindLabel,
+    ...item.evidenceTitles.map((source) => source.title),
+  ].join(' '))
+}
+
+function cloudMatchScore(item: CloudItem, query: string) {
+  const label = normalizeSearchText(item.label)
+  const detail = cloudSearchText(item)
+  if (label === query) return item.weight + 40
+  if (label.includes(query)) return item.weight + 24
+  if (detail.includes(query)) return item.weight + 12
+  return item.weight
+}
+
+function normalizeSearchText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function hashText(value: string) {
+  let hash = 0
+  for (const char of value) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  }
+  return hash.toString(36)
+}
+
+function cloudLabel(label: string) {
+  const cleaned = label.replace(/\s+/g, ' ').trim()
+  return cleaned.length > 36 ? `${cleaned.slice(0, 34)}...` : cleaned
+}
+
+function splitHistoryAnswer(answer: string) {
+  const cleaned = answer
+    .replace(/^#+\s*/gm, '')
+    .replace(/```text/g, '')
+    .replace(/```/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  if (!cleaned) return ['这条历史问答暂时没有可展示的回答内容。']
+  return cleaned
+    .split(/(?<=。|！|？|\.|\!|\?)\s+|\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+}
+
+function promptSubject(label: string) {
+  const cleaned = label.replace(/\s+/g, ' ').trim()
+  return cleaned.length > 18 ? `${cleaned.slice(0, 16)}...` : cleaned
+}
+
+function cloudNodeClasses(item: CloudItem) {
+  return [
+    item.tone,
+    `cloud-kind-${item.kind}`,
+    {
+      selected: selectedCloudKey.value === item.key,
+      matched: isCloudMatch(item),
+      dimmed: !isCloudMatch(item),
+      'is-dragging': draggingCloudKey.value === item.key,
+      'is-linked': Boolean(cloudDragInfluenceOffsets.value[item.key]),
+      'is-recoiling': Boolean(cloudRecoilOffsets.value[item.key]),
+      'is-returning': cloudReturnKey.value === item.key,
+      'is-large': item.weight >= 6,
+      'is-small': item.weight <= 3,
+    },
+  ]
+}
+
+function cloudNodeStyle(item: CloudItem, index: number) {
+  const size = Math.max(22, Math.min(30, 17 + item.weight * 1.45))
+  const influence = cloudInfluenceOffset(item.key)
+  const point = cloudGraphPoint(item, index)
+  return {
+    '--cloud-x': `${point.x}px`,
+    '--cloud-y': `${point.y}px`,
+    '--cloud-size': `${size}px`,
+    '--cloud-half-size': `${roundCloudMotion(size / 2)}px`,
+    '--cloud-link-strength': `${influence.strength}`,
+    '--cloud-linked-scale': `${roundCloudMotion(1.01 + influence.strength * 0.06)}`,
+    '--cloud-orbit-delay': `${-0.2 * (index % 9)}s`,
+  }
 }
 
 function sourceToneClass(source: Source) {
@@ -1116,7 +2294,7 @@ function sourcePreview(source: Source) {
   if (why) return why
   const summary = cleanOverviewText(source.summary)
   if (summary) return summary
-  return '这条材料已经进入图谱，等待之后继续连接。'
+  return '这条材料已经进入知识库，等待之后继续连接。'
 }
 
 function keyNodeSummary(node: GraphNode) {
@@ -1136,6 +2314,17 @@ function cleanOverviewText(text: string) {
     .replace(/^user-stated:\s*/i, '')
     .replace(/^ai_inferred:\s*/i, '')
     .trim()
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '刚刚'
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
 }
 
 function sourceIdForNode(node: GraphNode) {
@@ -1396,6 +2585,50 @@ function nodeTypeLabel(type: string) {
   return labels[type] || type
 }
 
+function originLabel(origin: string) {
+  const value = origin.toLowerCase()
+  if (value.includes('user')) return '用户确认'
+  if (value.includes('ai')) return 'AI 推断'
+  if (value.includes('system')) return '系统生成'
+  return origin || '未标注'
+}
+
+function graphStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    active: '有效',
+    confirmed: '已确认',
+    proposed: '待确认',
+    rejected: '已拒绝',
+    weakened: '已削弱',
+    hidden: '已隐藏',
+  }
+  return labels[status] || status || '未标注'
+}
+
+function relationLabel(relation: string) {
+  const labels: Record<string, string> = {
+    related_to: '相关',
+    evidence_for: '证明',
+    triggered_thought: '触发想法',
+    supports: '支持',
+    follow_up: '后续问题',
+    belongs_to: '属于',
+  }
+  return labels[relation] || relation
+}
+
+function confidenceLabel(confidence?: number) {
+  if (typeof confidence !== 'number' || Number.isNaN(confidence)) return '未标注'
+  return `${Math.round(confidence * 100)}%`
+}
+
+function sourceToneLabel(source: Source | null) {
+  if (!source) return '未关联材料'
+  if (source.why_saved_status === 'user-stated') return '用户原话'
+  if (source.why_saved_status === 'AI-inferred') return 'AI 推断'
+  return '材料线索'
+}
+
 function edgeClasses(edge: GraphEdge) {
   const classes = [`status-${edge.status || 'confirmed'}`]
   if (edge.origin === 'user') classes.push('origin-user')
@@ -1428,7 +2661,7 @@ function graphStyle() {
         padding: '8px',
       },
     },
-    { selector: '.node-source', style: { 'border-color': '#315f9f', color: '#315f9f' } },
+    { selector: '.node-source', style: { 'border-color': '#b0501e', color: '#b0501e' } },
     { selector: '.node-thought', style: { 'border-color': '#356f5c', color: '#356f5c' } },
     { selector: '.node-task', style: { 'border-color': '#8b5631', color: '#8b5631' } },
     {
@@ -1448,11 +2681,11 @@ function graphStyle() {
       },
     },
     { selector: '.origin-user', style: { 'line-color': '#356f5c', 'target-arrow-color': '#356f5c', width: 2 } },
-    { selector: '.mode-emphasis', style: { 'line-color': '#315f9f', 'target-arrow-color': '#315f9f', width: 2.4 } },
+    { selector: '.mode-emphasis', style: { 'line-color': '#b0501e', 'target-arrow-color': '#b0501e', width: 2.4 } },
     { selector: '.status-proposed', style: { 'line-style': 'dashed' } },
     { selector: '.status-weakened', style: { opacity: 0.56, 'line-style': 'dashed' } },
     { selector: '.status-rejected', style: { opacity: 0.32, 'line-style': 'dotted' } },
-    { selector: ':selected', style: { 'border-width': 3, 'border-color': '#28231d', 'line-color': '#28231d', 'target-arrow-color': '#28231d' } },
+    { selector: ':selected', style: { 'border-width': 3, 'border-color': '#1c1816', 'line-color': '#1c1816', 'target-arrow-color': '#1c1816' } },
   ]
 }
 

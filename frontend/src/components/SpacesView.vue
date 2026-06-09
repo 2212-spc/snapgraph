@@ -2,10 +2,28 @@
   <section class="layer-view spaces-view">
     <div v-if="!selectedSpace" class="spaces-overview">
       <div class="layer-head">
-        <p class="eyebrow">图谱</p>
-        <h1>你的信息在哪些问题里生长？</h1>
-        <p>空间不是写之前的分类负担，而是材料进入后逐渐显出的结构。</p>
+        <p class="eyebrow">知识库</p>
+        <h1>你的材料，按问题长成记忆空间</h1>
+        <p>先看空间、证据和未闭环线索；需要关系时，再进入空间里的记忆云。</p>
       </div>
+
+      <section class="memory-quick-actions" aria-label="记忆快捷入口">
+        <button class="memory-quick-action primary" type="button" :disabled="busy" @click="askPrimaryMemory">
+          <MessageSquare :size="16" />
+          <span>找回</span>
+          <strong>问过去的你</strong>
+        </button>
+        <button class="memory-quick-action" type="button" :disabled="busy" @click="$emit('startCollect')">
+          <Archive :size="16" />
+          <span>收集</span>
+          <strong>收下一份材料</strong>
+        </button>
+        <button class="memory-quick-action" type="button" :disabled="busy || !defaultSpaceId" @click="openDefaultSpace">
+          <BookOpen :size="16" />
+          <span>空间</span>
+          <strong>打开主记忆</strong>
+        </button>
+      </section>
 
       <section class="space-grid memory-space-grid">
         <article
@@ -17,7 +35,7 @@
           <div class="graph-space-card-head">
             <div>
               <span>{{ spaceCard.kicker }}</span>
-              <strong>{{ spaceCard.name }}</strong>
+              <strong>{{ spaceCard.displayName }}</strong>
             </div>
             <div class="graph-space-stats">
               <span class="graph-stat-chip">{{ spaceCard.sourceCount }} 材料</span>
@@ -48,7 +66,7 @@
       </section>
 
       <form class="create-space" @submit.prevent="submitSpace">
-        <span>新建图谱空间</span>
+        <span>新建记忆空间</span>
         <input v-model="name" placeholder="空间名称" />
         <input v-model="purpose" placeholder="它要帮你追什么问题？" />
         <textarea v-model="description" placeholder="补充描述，可选。" />
@@ -60,12 +78,13 @@
     </div>
 
     <div v-else>
-      <button class="text-button back-button" @click="$emit('selectSpace', 'all')">返回图谱列表</button>
+      <button class="text-button back-button" @click="$emit('selectSpace', 'all')">返回知识库</button>
       <GraphSpaceView
         :busy="busy"
         :space="selectedSpace"
         :spaces="spaces"
         :sources="sources"
+        :questions="questions"
         :graph="graph"
         :suggestions="suggestions"
         @update-space="(spaceId, payload) => $emit('updateSpace', spaceId, payload)"
@@ -82,12 +101,14 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Archive, BookOpen, MessageSquare } from 'lucide-vue-next'
 import GraphSpaceView from './GraphSpaceView.vue'
-import type { ContextUpdatePayload, GraphPayload, GraphSpace, Source, Suggestion } from '../types'
+import type { ContextUpdatePayload, GraphPayload, GraphSpace, SavedQuestion, Source, Suggestion } from '../types'
 
 type GraphSpaceCard = {
   id: string
   name: string
+  displayName: string
   kicker: string
   description: string
   color: string
@@ -105,6 +126,7 @@ const props = defineProps<{
   selectedSpaceId: string
   sources: Source[]
   allSources: Source[]
+  questions: SavedQuestion[]
   graph: GraphPayload
   suggestions: Suggestion[]
 }>()
@@ -119,15 +141,19 @@ const emit = defineEmits<{
   rejectSuggestion: [suggestionId: string]
   graphChanged: []
   askFromGraph: [question: string]
+  startCollect: []
 }>()
 
 const name = ref('')
 const purpose = ref('')
 const description = ref('')
-const color = ref('#315f9f')
+const color = ref('#b0501e')
 
 const selectedSpace = computed(() => props.spaces.find((space) => space.id === props.selectedSpaceId) || null)
 const visibleSpaces = computed(() => props.spaces.filter((space) => space.status === 'active'))
+const defaultSpaceId = computed(() => {
+  return visibleSpaces.value.find((space) => space.id === 'default')?.id || visibleSpaces.value[0]?.id || ''
+})
 const sourcesBySpaceId = computed(() => {
   const buckets = new Map<string, Source[]>()
   for (const source of props.allSources) {
@@ -150,6 +176,7 @@ const graphSpaceCards = computed<GraphSpaceCard[]>(() => {
     return {
       id: space.id,
       name: space.name,
+      displayName: spaceDisplayName(space),
       kicker: space.id === 'inbox' ? '记忆入口' : '记忆空间',
       description: spaceDescription(space),
       color: space.color,
@@ -174,6 +201,20 @@ function submitSpace() {
   name.value = ''
   purpose.value = ''
   description.value = ''
+}
+
+function askPrimaryMemory() {
+  emit('askFromGraph', '帮我找回当前最重要的旧判断和证据。')
+}
+
+function openDefaultSpace() {
+  if (defaultSpaceId.value) emit('selectSpace', defaultSpaceId.value)
+}
+
+function spaceDisplayName(space: GraphSpace) {
+  if (space.id === 'inbox') return '待整理'
+  if (space.id === 'default') return '主记忆'
+  return space.name
 }
 
 function spaceDescription(space: GraphSpace) {

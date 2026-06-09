@@ -1,91 +1,178 @@
 # SnapGraph
 
-A local capture-to-connection space that preserves why something mattered when you saved it.
+> A local cognitive memory system for preserving not just sources, but the reason they mattered.
 
-SnapGraph turns links, notes, text files, and screenshots into an auditable Markdown wiki plus a lightweight cognitive graph. Its core action is simple: drop a material in, leave one or two sentences of context, and let SnapGraph connect that capture to related materials, open loops, and projects over time.
+![Python](https://img.shields.io/badge/Python-3.11+-2b5b84?style=flat-square)
+![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square)
+![FastAPI](https://img.shields.io/badge/FastAPI-local%20API-009688?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-93%20python%20%2B%2030%20frontend-6b6b6b?style=flat-square)
 
-## 60 Second Demo
+SnapGraph is a cognitive LLM Wiki. It turns notes, links, text files, PDFs, screenshots, and saved answers into a local memory workspace with immutable sources, generated wiki pages, graph paths, and evidence-backed recall.
+
+Most note apps remember *what* you saved. SnapGraph also preserves:
+
+- why it mattered at the moment of capture
+- which project, question, person, or open loop it relates to
+- whether the reason was user-stated or AI-inferred
+- which original sources support a later answer
+- how an old answer can be reopened and continued
+
+<p align="center">
+  <img src="docs/assets/snapgraph-knowledge-spaces.png" alt="SnapGraph knowledge spaces" width="82%">
+</p>
+
+## Product Shape
+
+SnapGraph combines three surfaces:
+
+| Surface | Purpose |
+| --- | --- |
+| **Collect** | Save raw material with an optional user-stated reason. Raw sources remain traceable. |
+| **Recall** | Ask fuzzy questions such as "Why did I care about this?" and recover prior context. |
+| **Knowledge Cloud** | Browse saved questions, materials, open loops, and graph nodes as a HermesPet-inspired memory constellation. |
+
+<p align="center">
+  <img src="docs/assets/snapgraph-memory-cloud.png" alt="SnapGraph memory cloud" width="82%">
+</p>
+
+The current frontend is a real Vue/FastAPI app, not a throwaway mockup. It includes a StudyAgent-style workspace shell, compact knowledge spaces, a draggable memory cloud, saved-question history panels, source evidence lists, and mobile responsive layouts.
+
+<p align="center">
+  <img src="docs/assets/snapgraph-mobile-recall.png" alt="SnapGraph mobile recall" width="34%">
+</p>
+
+## Core Features
+
+- **Immutable source archive**: copied raw inputs, source hashes, generated source pages, and append-only operation logs.
+- **Cognitive context**: every saved item separates user-stated reasons from AI-inferred context.
+- **Hybrid GraphRAG**: answers combine text retrieval, graph expansion, source pages, and evidence paths.
+- **Saved answer memory**: useful answers can be written back into `wiki/questions/` and reopened later.
+- **Knowledge cloud**: search history becomes a constellation of saved questions, materials, open loops, and graph nodes.
+- **Local-first trust model**: API keys stay in environment variables; config stores only provider/model names.
+- **Deterministic tests**: MockLLM remains the default for repeatable development and evaluation.
+
+## Quick Start
 
 ```bash
-conda create -n snapgraph-dev python=3.11 -y
-conda run -n snapgraph-dev python -m pip install -e ".[demo,test]"
-conda run -n snapgraph-dev snapgraph init
-conda run -n snapgraph-dev snapgraph load-demo
-conda run -n snapgraph-dev snapgraph demo
+git clone https://github.com/2212-spc/snapgraph.git
+cd snapgraph
+
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[demo,test]"
+
+npm install
+npm run build
+
+snapgraph init
+snapgraph load-demo
+snapgraph demo --port 8765
 ```
 
-Open `http://localhost:8501`, then try the capture table:
+Open [http://localhost:8765](http://localhost:8765).
 
-```text
-丢进一段摘录、链接或文件。
-补一句：为什么这条值得记下？
-看右侧是否浮出旧线索，以及它接到了哪个未闭环问题。
-```
-
-The demo flow is:
-
-```text
-Drop material -> Add context -> See related old clues -> Attach to a live problem -> Review open loops
-```
-
-## What It Builds
-
-```text
-.my_snapgraph/
-├── raw/                 immutable copied sources
-├── wiki/
-│   ├── index.md         content map
-│   ├── log.md           append-only JSON operation log
-│   ├── sources/         generated source pages
-│   ├── questions/       saved answers
-│   └── graph_report.md  cognitive graph report
-├── memory/
-│   ├── graph.json       source/thought/project/task graph
-│   └── snapgraph.sqlite queryable metadata mirror
-└── config.yaml          provider and retrieval settings, never API keys
-```
-
-## Trust Model
-
-- Raw sources are copied and hash-checked.
-- User-stated reasons from `--why` or the web context note are preserved exactly.
-- AI-inferred reasons are visibly labeled as `AI-inferred`.
-- Answers include evidence sources, graph paths, and retrieval diagnostics.
-- Missing evidence returns low confidence instead of invented memory.
-- Provider keys live only in environment variables such as `SNAPGRAPH_LLM_API_KEY`.
+The CLI default port is `8501`; the examples use `8765` because it is convenient for local product testing.
 
 ## CLI
 
 ```bash
 snapgraph init
 snapgraph ingest examples/demo_sources/note_llm_wiki.md \
-  --why "我保存它是因为 SnapGraph 需要继承 LLM Wiki 的 raw/wiki/index/log 工作流。"
-snapgraph ask "我为什么要从 LLM Wiki 开始？"
-snapgraph ask "我为什么要从 LLM Wiki 开始？" --save
+  --why "SnapGraph needs the LLM Wiki raw/wiki/index/log workflow."
+snapgraph ask "Why did I start from LLM Wiki?"
+snapgraph ask "Why did I start from LLM Wiki?" --save
 snapgraph graph
 snapgraph report
 snapgraph lint
 snapgraph eval --output-dir /tmp/snapgraph_eval
+snapgraph demo --port 8765
 ```
 
-## Real LLM Mode
+## Web App Development
 
-MockLLM is deterministic and best for tests. Qwen can be used for multimodal manual evaluation.
+```bash
+npm install
+npm run dev
+```
+
+For the packaged FastAPI-served frontend:
+
+```bash
+npm run build
+snapgraph demo --port 8765
+```
+
+The built assets are served from `snapgraph/static`.
+
+## Workspace Layout
+
+```text
+.my_snapgraph/
+├── raw/                 immutable copied sources
+├── wiki/
+│   ├── index.md         content map
+│   ├── log.md           chronological operation log
+│   ├── sources/         generated source pages
+│   ├── questions/       saved answers
+│   └── graph_report.md  cognitive graph report
+├── memory/
+│   ├── graph.json       source/thought/project/task graph
+│   └── snapgraph.sqlite queryable metadata mirror
+└── config.yaml          provider/model config, never API keys
+```
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A["Raw source"] --> B["Ingest pipeline"]
+  B --> C["Wiki source page"]
+  B --> D["SQLite metadata"]
+  B --> E["graph.json"]
+  F["Recall question"] --> G["Retriever"]
+  G --> C
+  G --> E
+  G --> H["Evidence paths"]
+  H --> I["Answer generator"]
+  I --> J["Saved question page"]
+  J --> K["Knowledge cloud history"]
+```
+
+Important implementation boundaries:
+
+- `snapgraph/ingest.py`: source capture and context extraction
+- `snapgraph/retrieval.py`: local retrieval and graph expansion
+- `snapgraph/answer.py`: evidence-backed answer generation and saved answers
+- `snapgraph/api.py`: local FastAPI API and frontend data contract
+- `frontend/src/`: Vue 3 product interface
+- `tests/`: deterministic Python and frontend behavior tests
+
+## Real LLM Providers
+
+MockLLM is the default and is best for tests. Real providers are behind abstractions.
 
 ```bash
 export SNAPGRAPH_LLM_API_KEY="..."
 snapgraph config set-llm-provider qwen
-snapgraph config set-llm-model qwen3-vl-plus
-snapgraph ask "这些材料共同支持 SnapGraph 的哪条产品判断？"
+snapgraph ask "Which product judgment do these materials support?"
 ```
 
-Qwen uses the DashScope OpenAI-compatible endpoint by default. Override it with `SNAPGRAPH_QWEN_BASE_URL` when using a regional endpoint.
+Supported provider names:
 
-Do not put real keys in `config.yaml`, `.env`, wiki pages, evaluation reports, or issue logs.
+- `mock`
+- `qwen`
+- `deepseek`
+- `anthropic`
 
-## Capability Evaluation
+Security rule: `config.yaml` stores only the environment variable name, not the key value. Do not commit real API keys, `.env` files, wiki workspaces, evaluation logs, or screenshots that expose secrets.
 
-`snapgraph eval` creates an isolated workspace and writes:
+## Evaluation
+
+```bash
+snapgraph eval --output-dir /tmp/snapgraph_eval
+```
+
+The evaluation creates an isolated workspace and writes:
 
 ```text
 evaluation_results.json
@@ -94,60 +181,48 @@ inputs/
 workspace/.my_snapgraph/
 ```
 
-It covers Markdown, text, webpage exports, PDF capture with local text extraction when available, mixed Chinese/English, duplicate files, empty files, long files, screenshot placeholders, abstract questions, open-loop recovery, cross-document synthesis, and no-match questions.
-
-Scores are 20 points:
-
-```text
-retrieval hit + evidence traceability + cognitive boundary + answer quality + boundary honesty
-```
-
-`>=16` is demo-ready, `12-15` is useful but needs polish, and `<12` should not be marketed as a capability.
-
-## Web App Development
-
-The demo UI is built with Vite + Vue + TypeScript and served by FastAPI from `snapgraph/static`.
-
-```bash
-npm install
-npm run build
-snapgraph demo
-```
-
-The app is organized around:
-
-```text
-Capture table / Context note / Memory stream / Problem view / Settings
-```
-
-Current product semantics are:
-
-- `Capture table`: receive a link, text, webpage export, PDF, screenshot, file, or loose thought without asking the user to choose a space first.
-- `Context note`: preserve the user's own reason as `user-stated`; AI may summarize sources, but it must not invent the user's motive.
-- `Recall`: when the main text sounds like "我之前为什么..." or another fuzzy clue, recover old contexts without saving that question as a new source.
-- `Memory stream`: surface related old clues, prior judgments, source excerpts, and open loops beside the current capture.
-- `Problem view`: group captures around live questions/open loops instead of making the homepage a graph canvas.
-- `Settings`: keep provider/runtime details out of the first-run experience.
+It checks source traceability, retrieval quality, cognitive boundary honesty, evidence paths, and no-match behavior.
 
 ## Tests
 
 ```bash
-conda run -n snapgraph-dev pytest -q
+pytest -q
+node --test tests/*.test.ts
+npm run build
 ```
 
-Current expected baseline:
+Current local baseline:
 
 ```text
-71 tests passing
+93 Python tests passing
+30 frontend behavior tests passing
+Vite production build passing
 ```
 
-FastAPI may emit `on_event` deprecation warnings; they do not affect current behavior.
+FastAPI currently emits `on_event` deprecation warnings during tests; they do not affect behavior.
 
-## Design Notes
+## Documentation
 
-- `docs/snapgraph_v0.1_design.md` describes the product boundary.
-- `docs/snapgraph_phase7_1_status_evaluation.md` records the previous baseline.
-- `docs/evaluation_method.md` documents the Phase 7.2 evaluation matrix.
-- `docs/api_contract.md` documents the local API.
-- `docs/workspace_schema.md` documents workspace files and schemas.
-- `docs/media_boundaries.md` documents PDF/image boundaries.
+- [Workspace schema](docs/workspace_schema.md)
+- [API contract](docs/api_contract.md)
+- [Evaluation method](docs/evaluation_method.md)
+- [Media boundaries](docs/media_boundaries.md)
+- [Phase gate](docs/phase_gate.md)
+- [Design notes](docs/snapgraph_v0.1_design.md)
+
+## Roadmap
+
+- Better PDF and image extraction diagnostics.
+- More explicit saved-answer continuation flows.
+- Provider/model configuration UI polish.
+- Stronger graph linting and repair suggestions.
+- Exportable demo reports for user studies.
+- Optional embedding layer after the Markdown + SQLite + JSON graph baseline is stable.
+
+## Project Status
+
+SnapGraph is a local-first course/research prototype that is becoming a complete cognitive memory product. The foundation is intentionally simple: Markdown, SQLite, JSON graph files, deterministic tests, and explicit source traceability before heavier graph infrastructure.
+
+## License
+
+No open-source license has been selected yet. Treat the repository as source-available until a license is added.

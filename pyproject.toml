@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
+    "httpx>=0.28",
     "pytest>=8",
 ]
 anthropic = [

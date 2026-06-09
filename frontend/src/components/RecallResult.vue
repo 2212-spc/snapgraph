@@ -1,10 +1,10 @@
 <template>
   <section class="recall-result">
-    <article class="answer-card">
-      <div class="answer-card-head">
+    <article class="answer-card answer-chat-window">
+      <div class="answer-card-head answer-chat-head">
         <div>
-          <div class="result-kicker">记忆找回</div>
-          <h2>先给结论</h2>
+          <div class="result-kicker">对话</div>
+          <h2>{{ busy ? '正在回答' : '回答' }}</h2>
         </div>
         <div v-if="evidenceSummaryChips.length" class="evidence-summary">
           <span
@@ -21,13 +21,22 @@
         </p>
       </div>
 
-      <div class="answer-question-block">
-        <span class="answer-question-label">你的问题</span>
-        <p class="answer-question">{{ questionText }}</p>
-      </div>
+      <div class="answer-chat-thread">
+        <article class="answer-message is-user">
+          <span class="answer-avatar">你</span>
+          <div class="answer-bubble">
+            <span class="answer-question-label">你的问题</span>
+            <p class="answer-question">{{ questionText }}</p>
+          </div>
+        </article>
 
-      <div class="answer-card-body">
-        <p v-for="block in answerBlocks" :key="block">{{ block }}</p>
+        <article class="answer-message is-assistant">
+          <span class="answer-avatar">S</span>
+          <div class="answer-bubble answer-card-body">
+            <span class="answer-question-label">SnapGraph</span>
+            <p v-for="block in answerBlocks" :key="block">{{ block }}</p>
+          </div>
+        </article>
       </div>
     </article>
 
@@ -298,11 +307,7 @@ const graphPaths = computed(() => {
     .map((line) => line.replace(/^[-\d.]+\s*/, '').trim())
     .filter(Boolean)
 })
-const answerText = computed(() =>
-  normalizeAnswerText(
-    sectionText('## 结论') || sectionText('## AI 探索回应') || fallbackAnswerText(),
-  ),
-)
+const answerText = computed(() => normalizeAnswerText(sectionText('## 结论') || sectionText('## AI 探索回应') || fallbackAnswerText()))
 const answerBlocks = computed(() => splitBlocks(answerText.value))
 const nextText = computed(() => sectionText('## 下一步') || fallbackNext())
 const questionText = computed(() => props.question || props.result?.question || '正在从你的本地记忆里组织这个问题。')

@@ -1,15 +1,28 @@
 <template>
-  <div class="snapgraph-shell">
-    <header class="topbar">
-      <button class="brand" @click="activeView = 'recall'">
-        <span class="brand-mark">Sg</span>
-        <span>
-          <strong>SnapGraph</strong>
-          <small>找回遗失的想法</small>
-        </span>
-      </button>
+  <div class="study-shell">
+    <aside class="study-sidebar" :data-collapsed="sidebarCollapsed ? 'true' : 'false'">
+      <div class="sidebar-top">
+        <button class="brand sidebar-brand" @click="activeView = 'recall'">
+          <span class="brand-mark">S</span>
+          <span class="brand-copy">
+            <strong>SnapGraph</strong>
+          </span>
+        </button>
+        <button
+          class="sidebar-collapse"
+          type="button"
+          :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+          @click="sidebarCollapsed = !sidebarCollapsed"
+        >
+          <component :is="sidebarCollapsed ? PanelLeftOpen : PanelLeftClose" :size="15" />
+        </button>
+      </div>
 
-      <nav class="layer-nav" aria-label="SnapGraph layers">
+      <nav class="sidebar-nav" aria-label="SnapGraph layers">
+        <button class="sidebar-new-chat" type="button" :disabled="busy" @click="startNewRecall">
+          <Plus :size="16" />
+          <span>新对话</span>
+        </button>
         <button
           v-for="item in navItems"
           :key="item.id"
@@ -17,60 +30,109 @@
           @click="setView(item.id)"
         >
           <component :is="item.icon" :size="17" />
-          {{ item.label }}
+          <span>{{ item.label }}</span>
         </button>
       </nav>
 
-      <div class="top-actions">
-        <span class="provider-pill">{{ providerLabel }}</span>
-        <button class="icon-button" aria-label="设置" @click="settingsOpen = true">
+      <div class="sidebar-spacer"></div>
+
+      <div class="sidebar-footer">
+        <button class="sidebar-settings" type="button" @click="settingsOpen = true">
           <Settings :size="18" />
+          <span>设置</span>
         </button>
+        <span class="provider-pill">{{ runtimeStatusLabel }}</span>
       </div>
-    </header>
+    </aside>
 
-    <main class="main-surface">
-      <RecallHome
-        v-if="activeView === 'recall'"
-        :busy="busy"
-        :busy-stage="busyStage"
-        :result="askResult"
-        :focus-graph="focusGraph"
-        :stages="recallStages"
-        :current-question="currentRecallQuestion"
-        @recall="runRecall"
-      />
+    <section class="study-chat-shell" :data-activity-open="showActivityPanel ? 'true' : 'false'">
+      <header class="session-bar">
+        <button class="session-title-button" type="button" :disabled="activeView !== 'recall'" @click="setView('recall')">
+          <span>{{ sessionTitle }}</span>
+        </button>
+        <div class="session-actions">
+          <button class="header-icon-button" aria-label="新对话" :disabled="busy" @click="startNewRecall">
+            <SquarePen :size="16" />
+          </button>
+          <button
+            class="header-icon-button activity-toggle"
+            :aria-pressed="activityOpen"
+            aria-label="活动面板"
+            @click="activityOpen = !activityOpen"
+          >
+            <PanelRight :size="16" />
+          </button>
+        </div>
+      </header>
 
-      <SpacesView
-        v-else-if="activeView === 'spaces'"
-        :busy="busy"
-        :spaces="spaces"
-        :selected-space-id="selectedSpaceId"
-        :sources="spaceSources"
-        :all-sources="allSources"
-        :graph="spaceGraph"
-        :suggestions="spaceSuggestions"
-        @select-space="selectSpace"
-        @create-space="createSpace"
-        @update-space="updateSpace"
-        @move-source="moveSource"
-        @update-context="updateContext"
-        @accept-suggestion="acceptSuggestion"
-        @reject-suggestion="rejectSuggestion"
-        @graph-changed="refreshSelectedGraph"
-        @ask-from-graph="askFromGraph"
-      />
+      <main class="main-surface">
+        <RecallHome
+          v-if="activeView === 'recall'"
+          :busy="busy"
+          :busy-stage="busyStage"
+          :result="askResult"
+          :focus-graph="focusGraph"
+          :stages="recallStages"
+          :current-question="currentRecallQuestion"
+          @recall="runRecall"
+        />
 
-      <CollectView
-        v-else
-        :busy="busy"
-        :spaces="spaces"
-        :results="collectResults"
-        @collect="collectMaterials"
-        @open-space="openCollectedSpace"
-        @update-title="updateSourceTitle"
-      />
-    </main>
+        <SpacesView
+          v-else-if="activeView === 'spaces'"
+          :busy="busy"
+          :spaces="spaces"
+          :selected-space-id="selectedSpaceId"
+          :sources="spaceSources"
+          :all-sources="allSources"
+          :questions="savedQuestions"
+          :graph="spaceGraph"
+          :suggestions="spaceSuggestions"
+          @select-space="selectSpace"
+          @create-space="createSpace"
+          @update-space="updateSpace"
+          @move-source="moveSource"
+          @update-context="updateContext"
+          @accept-suggestion="acceptSuggestion"
+          @reject-suggestion="rejectSuggestion"
+          @graph-changed="refreshSelectedGraph"
+          @ask-from-graph="askFromGraph"
+          @start-collect="startCollect"
+        />
+
+        <CollectView
+          v-else
+          :busy="busy"
+          :spaces="spaces"
+          :results="collectResults"
+          @collect="collectMaterials"
+          @open-space="openCollectedSpace"
+          @ask-batch="askRecentBatch"
+        />
+      </main>
+    </section>
+
+    <aside v-if="showActivityPanel" class="activity-panel" aria-label="SnapGraph activity">
+      <section class="activity-card">
+        <span>当前层</span>
+        <strong>{{ activeViewLabel }}</strong>
+        <p>{{ busy ? busyStage || '正在处理当前请求。' : '本地材料、记忆连接和保存理由会在这里汇总。' }}</p>
+      </section>
+      <section class="activity-card">
+        <span>证据</span>
+        <strong>{{ evidenceSummary }}</strong>
+        <p>{{ activityEvidenceDetail }}</p>
+      </section>
+      <section class="activity-card">
+        <span>连接</span>
+        <strong>{{ graphSummary }}</strong>
+        <p>{{ pendingSummary }}</p>
+      </section>
+      <section class="activity-card">
+        <span>运行</span>
+        <strong>{{ runtimeStatusLabel }}</strong>
+        <p>{{ runtimeStatusDetail }}</p>
+      </section>
+    </aside>
 
     <nav class="mobile-nav" aria-label="SnapGraph mobile layers">
       <button
@@ -93,11 +155,11 @@
         <h2>运行状态</h2>
         <dl>
           <div>
-            <dt>Provider</dt>
+            <dt>提供方</dt>
             <dd>{{ config?.provider || 'mock' }}</dd>
           </div>
           <div>
-            <dt>Model</dt>
+            <dt>模型</dt>
             <dd>{{ config?.runtime?.model_used || config?.model || 'MockLLM' }}</dd>
           </div>
           <div>
@@ -105,7 +167,7 @@
             <dd>{{ config?.has_api_key ? '已从环境变量读取' : '未配置或使用 mock' }}</dd>
           </div>
           <div>
-            <dt>Workspace</dt>
+            <dt>工作区</dt>
             <dd>{{ workspace?.workspace_path || '未加载' }}</dd>
           </div>
         </dl>
@@ -119,7 +181,18 @@
 
 <script setup lang="ts">
 import { computed, markRaw, onMounted, ref } from 'vue'
-import { Archive, FolderOpen, Search, Settings, X } from 'lucide-vue-next'
+import {
+  BookOpen,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PenLine,
+  PanelRight,
+  Plus,
+  Settings,
+  SquarePen,
+  X,
+} from 'lucide-vue-next'
 import CollectView from './components/CollectView.vue'
 import RecallHome from './components/RecallHome.vue'
 import SpacesView from './components/SpacesView.vue'
@@ -133,6 +206,7 @@ import type {
   IngestResponse,
   ProviderConfig,
   RecallStage,
+  SavedQuestion,
   Source,
   Suggestion,
   WorkspaceState,
@@ -142,12 +216,13 @@ type ActiveView = 'recall' | 'spaces' | 'collect'
 type ToastKind = 'info' | 'error'
 
 const navItems = [
-  { id: 'recall' as const, label: '找回', icon: markRaw(Search) },
-  { id: 'spaces' as const, label: '图谱', icon: markRaw(FolderOpen) },
-  { id: 'collect' as const, label: '收集', icon: markRaw(Archive) },
+  { id: 'recall' as const, label: '聊天', icon: markRaw(MessageSquare) },
+  { id: 'spaces' as const, label: '知识库', icon: markRaw(BookOpen) },
+  { id: 'collect' as const, label: '收集', icon: markRaw(PenLine) },
 ]
 
 const activeView = ref<ActiveView>('recall')
+const sidebarCollapsed = ref(false)
 const selectedSpaceId = ref('all')
 const busy = ref(false)
 const busyStage = ref('')
@@ -156,6 +231,7 @@ const config = ref<ProviderConfig | null>(null)
 const spaces = ref<GraphSpace[]>([])
 const allSources = ref<Source[]>([])
 const spaceSources = ref<Source[]>([])
+const savedQuestions = ref<SavedQuestion[]>([])
 const spaceGraph = ref<GraphPayload>({ nodes: [], edges: [] })
 const spaceSuggestions = ref<Suggestion[]>([])
 const focusGraph = ref<FocusGraph | null>(null)
@@ -163,7 +239,9 @@ const askResult = ref<AskResponse | null>(null)
 const currentRecallQuestion = ref('')
 const recallStages = ref<RecallStage[]>([])
 const collectResults = ref<IngestResponse[]>([])
+const recentBatchSourceIds = ref<string[]>([])
 const settingsOpen = ref(false)
+const activityOpen = ref(false)
 const toast = ref('')
 const toastKind = ref<ToastKind>('info')
 
@@ -171,6 +249,78 @@ const providerLabel = computed(() => {
   const provider = config.value?.provider || 'mock'
   const model = config.value?.runtime?.model_used || config.value?.model || ''
   return model ? `${provider} · ${model}` : provider
+})
+
+const runtimeStatusLabel = computed(() => {
+  return config.value?.has_api_key ? '本地记忆已连接' : '本地演示模式'
+})
+
+const runtimeStatusDetail = computed(() => {
+  return config.value?.has_api_key
+    ? '真实模型只在需要生成回答时参与，证据仍来自本地 SnapGraph。'
+    : '当前适合本地演示和确定性测试，回答会优先保留证据链。'
+})
+
+const activeViewLabel = computed(() => navItems.find((item) => item.id === activeView.value)?.label || '聊天')
+
+const selectedSpaceName = computed(() => {
+  if (selectedSpaceId.value === 'all') return '全部记忆'
+  const space = spaces.value.find((item) => item.id === selectedSpaceId.value)
+  return space ? graphSpaceDisplayName(space) : '记忆空间'
+})
+
+const sessionTitle = computed(() => {
+  if (activeView.value === 'recall') {
+    return currentRecallQuestion.value || askResult.value?.question || '新对话'
+  }
+  if (activeView.value === 'spaces') return selectedSpaceName.value
+  return '收集'
+})
+
+const sessionSubtitle = computed(() => {
+  if (activeView.value === 'recall') return busy.value ? busyStage.value || '正在找回' : '找回入口'
+  if (activeView.value === 'spaces') return `${spaces.value.length} 个空间`
+  return collectResults.value.length ? `${collectResults.value.length} 份材料已进入知识库` : '收集入口'
+})
+
+function graphSpaceDisplayName(space: GraphSpace) {
+  if (space.id === 'inbox') return '待整理'
+  if (space.id === 'default') return '主记忆'
+  return space.name
+}
+
+const workspaceSummary = computed(() => {
+  if (!workspace.value) return '未加载'
+  return `${workspace.value.sources} 份材料 · ${workspace.value.nodes} 个节点`
+})
+
+const showActivityPanel = computed(() => activityOpen.value)
+
+const evidenceSummary = computed(() => {
+  const summary = focusGraph.value?.confidence_summary
+  if (!summary) return `${allSources.value.length} 份材料`
+  return `${summary.source_count} 份材料 · ${summary.confidence_label}`
+})
+
+const activityEvidenceDetail = computed(() => {
+  if (recentBatchSourceIds.value.length) {
+    return `本轮会优先读取刚上传的 ${recentBatchSourceIds.value.length} 份材料，再扩展到旧记忆。`
+  }
+  const summary = focusGraph.value?.confidence_summary
+  if (!summary) return '等待一次找回后，会显示用户原话、AI 推断和证据数量。'
+  return `${summary.user_stated} 条用户原话，${summary.ai_inferred} 条 AI-inferred 线索。`
+})
+
+const graphSummary = computed(() => {
+  const nodes = workspace.value?.nodes ?? spaceGraph.value.nodes.length
+  const edges = workspace.value?.edges ?? spaceGraph.value.edges.length
+  return `${nodes} 个节点 · ${edges} 条连接`
+})
+
+const pendingSummary = computed(() => {
+  const pending = spaces.value.reduce((total, space) => total + (space.pending_suggestions || 0), 0)
+  if (pending) return `${pending} 条知识库整理建议等待确认。`
+  return '当前没有待确认建议，可以继续收集或找回。'
 })
 
 onMounted(() => {
@@ -184,9 +334,24 @@ function setView(view: ActiveView) {
   }
 }
 
+function startNewRecall() {
+  activeView.value = 'recall'
+  currentRecallQuestion.value = ''
+  askResult.value = null
+  focusGraph.value = null
+  recallStages.value = []
+  recentBatchSourceIds.value = []
+  activityOpen.value = false
+}
+
+function startCollect() {
+  activeView.value = 'collect'
+  activityOpen.value = false
+}
+
 async function refreshShell() {
   try {
-    await Promise.all([loadWorkspace(), loadConfig(), loadSpaces(), loadAllSources()])
+    await Promise.all([loadWorkspace(), loadConfig(), loadSpaces(), loadAllSources(), loadQuestions()])
     if (selectedSpaceId.value !== 'all') await loadSpaceDetail(selectedSpaceId.value)
   } catch (error) {
     showToast(messageFromError(error), 'error')
@@ -208,6 +373,10 @@ async function loadSpaces() {
 
 async function loadAllSources() {
   allSources.value = await api<Source[]>('/api/sources?space_id=all')
+}
+
+async function loadQuestions() {
+  savedQuestions.value = await api<SavedQuestion[]>('/api/questions')
 }
 
 async function selectSpace(spaceId: string) {
@@ -244,6 +413,15 @@ async function askFromGraph(question: string) {
   await runRecall(question)
 }
 
+async function askRecentBatch(question = '结合刚才上传的这批材料，我们下一步最应该优先完善什么？') {
+  const fallbackIds = collectResults.value.map((result) => result.source_id).filter(Boolean)
+  if (!recentBatchSourceIds.value.length && fallbackIds.length) {
+    recentBatchSourceIds.value = fallbackIds
+  }
+  activeView.value = 'recall'
+  await runRecall(question)
+}
+
 async function runRecall(question: string) {
   busy.value = true
   currentRecallQuestion.value = question
@@ -259,7 +437,7 @@ async function runRecall(question: string) {
   try {
     focusGraph.value = await api<FocusGraph>('/api/focus', {
       method: 'POST',
-      body: JSON.stringify({ question, space_id: 'all' }),
+      body: JSON.stringify(recallRequestPayload(question)),
     })
     updateRecallStage({ id: 'evidence', label: '找本地证据', status: 'done', detail: `找到 ${focusGraph.value.evidence_cards.length} 条线索` })
   } catch (error) {
@@ -282,7 +460,7 @@ async function streamRecall(question: string) {
   const response = await fetch('/api/ask/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, space_id: 'all', save: false }),
+    body: JSON.stringify(recallRequestPayload(question, false)),
   })
   if (!response.ok || !response.body) {
     throw new Error(await response.text() || `HTTP ${response.status}`)
@@ -330,7 +508,7 @@ function handleStreamEvent(raw: string, onChunk: (chunk: string) => void) {
 function partialAskResponse(question: string, text: string): AskResponse {
   return {
     question,
-    text: `# 回答\n## AI 探索回应\n${text}`,
+    text: `# 回答\n## 结论\n${text}`,
     contexts: focusGraph.value?.evidence_cards || [],
     graph_paths: [],
     focus_graph: focusGraph.value || emptyFocusGraph(),
@@ -350,6 +528,20 @@ function emptyFocusGraph(): FocusGraph {
       confidence_label: 'none',
     },
   }
+}
+
+function recallRequestPayload(question: string, save?: boolean) {
+  const contextSourceIds = currentContextSourceIds()
+  return {
+    question,
+    space_id: 'all',
+    ...(save === undefined ? {} : { save }),
+    ...(contextSourceIds.length ? { context_source_ids: contextSourceIds } : {}),
+  }
+}
+
+function currentContextSourceIds() {
+  return recentBatchSourceIds.value
 }
 
 function updateRecallStage(stage: RecallStage) {
@@ -375,18 +567,22 @@ async function collectMaterials(payload: CollectPayload) {
 
   busy.value = true
   collectResults.value = []
+  recentBatchSourceIds.value = []
+  const uploadedSourceIds: string[] = []
   try {
     for (const [index, file] of files.entries()) {
-      busyStage.value = `正在放入图谱 ${index + 1}/${files.length}。`
+      busyStage.value = `正在放入知识库 ${index + 1}/${files.length}。`
       const form = new FormData()
       form.append('file', file)
       form.append('why', payload.why)
       form.append('route_mode', payload.routeMode)
       if (payload.routeMode === 'manual') form.append('space_id', payload.spaceId)
       const result = await api<IngestResponse>('/api/ingest', { method: 'POST', body: form })
+      uploadedSourceIds.push(result.source_id)
       collectResults.value.unshift(result)
     }
-    showToast('材料已进入图谱。')
+    recentBatchSourceIds.value = uploadedSourceIds
+    showToast('材料已进入知识库。')
     await refreshShell()
   } catch (error) {
     showToast(messageFromError(error), 'error')
@@ -435,7 +631,7 @@ async function createSpace(payload: { name: string; purpose: string; description
     await loadSpaces()
     selectedSpaceId.value = space.id
     await loadSpaceDetail(space.id)
-    showToast('图谱空间已创建。')
+    showToast('记忆空间已创建。')
   } catch (error) {
     showToast(messageFromError(error), 'error')
   } finally {
@@ -451,7 +647,7 @@ async function updateSpace(spaceId: string, payload: { name: string; purpose: st
       body: JSON.stringify(payload),
     })
     await refreshShell()
-    showToast('图谱空间已更新。')
+    showToast('记忆空间已更新。')
   } catch (error) {
     showToast(messageFromError(error), 'error')
   } finally {

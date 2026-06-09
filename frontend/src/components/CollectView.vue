@@ -2,15 +2,25 @@
   <section class="layer-view collect-view" :class="{ 'has-receipt': receiptVisible }">
     <div class="layer-head">
       <p class="eyebrow">收集</p>
-      <h1>把材料放进图谱</h1>
-      <p>截图、PDF、网页和摘录先进入图谱；SnapGraph 会解析、摘要、连边，并把保存理由留作未来找回的线索。</p>
+      <h1>带着理由收下一份材料</h1>
+      <p>把截图、PDF、网页和摘录先交给系统。SnapGraph 会解析、摘要、建立连接，并把保存理由留作未来找回的线索。</p>
     </div>
 
     <section v-if="activeReceipt && receiptVisible" class="memory-receipt">
       <div class="section-head compact">
-        <div class="section-kicker">已放入图谱</div>
-        <h3>记忆回执</h3>
-        <p>这份材料已经被保存，并整理成一张之后可以回看的记忆回执。</p>
+        <div class="section-kicker">已放入知识库</div>
+        <h3>{{ batchReceiptVisible ? '本批次记忆回执' : '记忆回执' }}</h3>
+        <p>{{ batchReceiptVisible ? '这批材料已经被保存，之后可以作为同一组上下文继续追问。' : '这份材料已经被保存，并整理成一张之后可以回看的记忆回执。' }}</p>
+      </div>
+
+      <div v-if="batchReceiptVisible" class="batch-receipt-strip">
+        <div>
+          <span>本批次</span>
+          <strong>{{ props.results.length }} 份材料</strong>
+        </div>
+        <div class="batch-source-list">
+          <span v-for="item in batchSourcePreview" :key="item.source_id">{{ item.title }}</span>
+        </div>
       </div>
 
       <div class="receipt-section">
@@ -53,12 +63,12 @@
               {{ saveReasonBadge }}
             </span>
             <p v-if="saveReasonText">{{ saveReasonText }}</p>
-            <p v-else class="receipt-empty-state">这次还没有稳定的保存理由，之后可以在图谱里补写。</p>
+            <p v-else class="receipt-empty-state">这次还没有稳定的保存理由，之后可以在知识库里补写。</p>
           </div>
         </article>
 
         <article class="receipt-field">
-          <span>进入图谱</span>
+          <span>进入知识库</span>
           <div class="receipt-field-body">
             <strong>{{ receiptSpaceLabel }}</strong>
             <p>{{ receiptSpaceNote }}</p>
@@ -85,19 +95,28 @@
                 {{ connectionLabel(item.type, item.label) }}
               </span>
             </div>
-            <p v-else class="receipt-empty-state">暂未找到明确连接，可以稍后在图谱中整理。</p>
+            <p v-else class="receipt-empty-state">暂未找到明确连接，可以稍后在知识库中整理。</p>
           </div>
         </article>
       </div>
 
       <div class="receipt-actions">
         <button
-          class="primary-button"
+          class="primary-button batch-question-button"
+          type="button"
+          :disabled="busy"
+          @click="askBatch"
+        >
+          追问这批材料
+        </button>
+
+        <button
+          class="paper-button"
           type="button"
           :disabled="!canOpenSpace"
           @click="openSpace"
         >
-          查看所在图谱
+          查看所在记忆
         </button>
 
         <button class="paper-button" type="button" @click="continueCollect">
@@ -158,17 +177,17 @@
 
       <div class="route-row">
         <label>
-          <span>进入图谱</span>
+          <span>进入知识库</span>
           <select v-model="routeMode">
             <option value="auto">AI 自动放入</option>
-            <option value="manual">手动选择图谱</option>
-            <option value="inbox">先放 Inbox</option>
+            <option value="manual">手动选择记忆空间</option>
+            <option value="inbox">先放待整理</option>
           </select>
         </label>
         <label v-if="routeMode === 'manual'">
-          <span>图谱空间</span>
+          <span>记忆空间</span>
           <select v-model="spaceId">
-            <option v-for="space in routableSpaces" :key="space.id" :value="space.id">{{ space.name }}</option>
+            <option v-for="space in routableSpaces" :key="space.id" :value="space.id">{{ spaceDisplayName(space) }}</option>
           </select>
         </label>
       </div>
@@ -177,7 +196,7 @@
         <span>{{ helperText }}</span>
         <button class="primary-button" :disabled="busy || !canSubmit" @click="submit">
           <Archive :size="17" />
-          放进图谱
+          放进知识库
         </button>
       </footer>
     </section>
@@ -207,12 +226,12 @@
 
     <section v-if="otherResults.length" class="queue-list">
       <article v-for="item in otherResults" :key="item.source_id" class="queue-item">
-        <span>{{ sourceType(item.type) }} · {{ item.space_name || friendlySpaceName(item.graph_space_id) }}</span>
+        <span>{{ sourceType(item.type) }} · {{ resultSpaceLabel(item) }}</span>
         <strong>{{ item.title }}</strong>
         <p>{{ item.summary || '系统已收下这份材料。' }}</p>
         <small v-if="item.routing_suggestion">
           {{ item.routing_suggestion.status === 'accepted' ? '已自动放入' : '待确认' }}：
-          {{ item.routing_suggestion.reason }}
+          {{ routeSuggestionReasonText(item.routing_suggestion) }}
         </small>
       </article>
     </section>
@@ -249,7 +268,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   collect: [payload: CollectPayload]
   openSpace: [spaceId: string]
-  updateTitle: [sourceId: string, title: string]
+  askBatch: [question: string]
 }>()
 
 const text = ref('')
@@ -271,7 +290,7 @@ const STEP_DEFINITIONS = [
   { id: 'extract', label: '提取内容', detail: '先把这份材料转成可以整理的文本' },
   { id: 'summary', label: '生成摘要', detail: '整理出之后回看时最先需要的一句话' },
   { id: 'reason', label: '识别保存理由', detail: '把为什么值得保存变成未来可找回的线索' },
-  { id: 'space', label: '建议图谱空间', detail: '判断它应该先进入哪个图谱空间' },
+  { id: 'space', label: '建议记忆空间', detail: '判断它应该先进入哪个记忆空间' },
   { id: 'connect', label: '寻找可能连接', detail: '看看它和现有材料或节点可能连到哪里' },
 ] as const
 const RECEIPT_UNDERSTANDING_FALLBACK = '这份材料已经被保存，并可作为之后找回相关判断的线索。'
@@ -281,9 +300,9 @@ let progressTimer: ReturnType<typeof setInterval> | null = null
 const routableSpaces = computed(() => props.spaces.filter((space) => space.status === 'active' && space.id !== 'inbox'))
 const canSubmit = computed(() => Boolean(text.value.trim() || files.value.length))
 const helperText = computed(() => {
-  if (routeMode.value === 'auto') return '默认先让系统判断位置，低置信的材料会先留在 Inbox。'
-  if (routeMode.value === 'manual') return '这次会直接进入你选择的图谱空间。'
-  return '这次先留在 Inbox，之后可以再集中整理。'
+  if (routeMode.value === 'auto') return '默认先让系统判断位置，低置信的材料会先留在待整理。'
+  if (routeMode.value === 'manual') return '这次会直接进入你选择的记忆空间。'
+  return '这次先留在待整理，之后可以再集中整理。'
 })
 const showProgress = computed(() => props.busy && Boolean(lastSubmitted.value))
 const progressTitle = computed(() => {
@@ -297,6 +316,9 @@ const ingestSteps = computed<ProgressStep[]>(() => STEP_DEFINITIONS.map((step, i
 const activeReceipt = computed(() => props.results[0] || null)
 const otherResults = computed(() => props.results.slice(1))
 const receiptVisible = computed(() => Boolean(activeReceipt.value) && activeReceipt.value?.source_id !== hiddenReceiptSourceId.value)
+const batchReceiptVisible = computed(() => props.results.length > 1 && receiptVisible.value)
+const batchSourcePreview = computed(() => props.results.slice(0, 4))
+const batchQuestion = computed(() => '结合刚才上传的这批材料，我们下一步最应该优先完善什么？')
 const currentEvidenceCard = computed(() => {
   const receipt = activeReceipt.value
   if (!receipt) return null
@@ -324,13 +346,13 @@ const saveReasonBadge = computed(() => {
   if (saveReasonStatus.value === 'AI-inferred') return 'AI-inferred / AI 推断'
   return 'source / 材料'
 })
-const receiptSpaceLabel = computed(() => activeReceipt.value?.space_name || friendlySpaceName(activeReceipt.value?.graph_space_id) || '未指定')
+const receiptSpaceLabel = computed(() => resultSpaceLabel(activeReceipt.value) || '未指定')
 const receiptSpaceNote = computed(() => {
   const receipt = activeReceipt.value
-  if (!receipt) return '还没有明确的图谱位置。'
+  if (!receipt) return '还没有明确的记忆位置。'
 
   const suggestion = receipt.routing_suggestion
-  const targetSpace = suggestion?.payload?.target_space_name || friendlySpaceName(suggestion?.payload?.target_space_id)
+  const targetSpace = normalizeBuiltInSpaceName(suggestion?.payload?.target_space_name) || friendlySpaceName(suggestion?.payload?.target_space_id)
   if (suggestion?.status === 'accepted' && targetSpace) {
     return `系统已经帮你放进 ${targetSpace}。`
   }
@@ -338,10 +360,10 @@ const receiptSpaceNote = computed(() => {
     return `当前先保存在 ${receiptSpaceLabel.value}，系统建议稍后整理到 ${targetSpace}。`
   }
   if (lastSubmitted.value?.routeMode === 'manual') {
-    return '这次按你的选择直接进入了这个图谱空间。'
+    return '这次按你的选择直接进入了这个记忆空间。'
   }
   if (lastSubmitted.value?.routeMode === 'inbox') {
-    return '这次先放进 Inbox，之后可以再决定是否移动。'
+    return '这次先放进待整理，之后可以再决定是否移动。'
   }
   return '系统已经先选了一个当前最稳妥的位置。'
 })
@@ -436,27 +458,8 @@ function openSpace() {
   emit('openSpace', space)
 }
 
-async function startTitleEdit() {
-  titleDraft.value = receiptTitle.value
-  titleEditOpen.value = true
-  await nextTick()
-  titleInput.value?.focus()
-  titleInput.value?.select()
-}
-
-function confirmTitleEdit() {
-  const receipt = activeReceipt.value
-  const nextTitle = titleDraft.value.trim()
-  if (!receipt || !nextTitle) return
-  titleEditOpen.value = false
-  if (nextTitle !== receiptTitle.value) {
-    emit('updateTitle', receipt.source_id, nextTitle)
-  }
-}
-
-function cancelTitleEdit() {
-  titleEditOpen.value = false
-  titleDraft.value = ''
+function askBatch() {
+  emit('askBatch', batchQuestion.value)
 }
 
 async function continueCollect() {
@@ -490,7 +493,42 @@ function sourceType(type: string) {
 
 function friendlySpaceName(spaceId?: string) {
   if (!spaceId) return ''
-  return props.spaces.find((space) => space.id === spaceId)?.name || (spaceId === 'default' ? 'Default' : spaceId === 'inbox' ? 'Inbox' : spaceId)
+  const matched = props.spaces.find((space) => space.id === spaceId)
+  if (matched) return spaceDisplayName(matched)
+  if (spaceId === 'default') return '主记忆'
+  if (spaceId === 'inbox') return '待整理'
+  return spaceId
+}
+
+function spaceDisplayName(space: GraphSpace) {
+  if (space.id === 'inbox') return '待整理'
+  if (space.id === 'default') return '主记忆'
+  return space.name
+}
+
+function resultSpaceLabel(result?: IngestResponse | null) {
+  if (!result) return ''
+  return normalizeBuiltInSpaceName(result.space_name) || friendlySpaceName(result.graph_space_id)
+}
+
+function routeSuggestionReasonText(suggestion?: IngestResponse['routing_suggestion']) {
+  return sanitizeBuiltInSpaceNames(suggestion?.reason || '')
+}
+
+function normalizeBuiltInSpaceName(name?: string) {
+  if (!name) return ''
+  const normalized = name.trim().toLowerCase()
+  if (normalized === 'inbox') return '待整理'
+  if (normalized === 'default') return '主记忆'
+  return name
+}
+
+function sanitizeBuiltInSpaceNames(text = '') {
+  return text
+    .replace(/\bInbox\b/g, '待整理')
+    .replace(/\binbox\b/g, '待整理')
+    .replace(/\bDefault\b/g, '主记忆')
+    .replace(/\bdefault\b/g, '主记忆')
 }
 
 function connectionLabel(type: string, label: string) {

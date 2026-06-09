@@ -16,3 +16,4 @@ dist/
 coverage/
 evaluation_results.json
 evaluation_report.md
+outputs/

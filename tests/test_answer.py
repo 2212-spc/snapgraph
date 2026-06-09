@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import snapgraph.parsers as parsers
 from snapgraph.answer import answer_question, clean_answer_glyphs, save_answer
 from snapgraph.ingest import ingest_source
+from snapgraph.llm import MockLLM
+from snapgraph.llm_providers import _SYNTHESIZE_SYSTEM
 from snapgraph.retrieval import retrieve_for_question
 from snapgraph.workspace import Workspace, create_workspace
 
@@ -22,6 +24,8 @@ def test_ask_recovers_llm_wiki_context_with_graph_paths(tmp_path: Path) -> None:
 
     answer = answer_question(workspace, "我为什么要从 LLM Wiki 开始？")
 
+    assert "## 结论" in answer.text
+    assert answer.text.index("## 结论") < answer.text.index("## 找回的原话")
     assert "## 找回的原话" in answer.text
     assert "## 相关材料" in answer.text
     assert "## 连接路径" in answer.text
@@ -85,6 +89,43 @@ def test_long_document_does_not_beat_short_title_match(tmp_path: Path) -> None:
     retrieval = retrieve_for_question(workspace, "needle")
 
     assert retrieval.contexts[0].title == "needle_note"
+
+
+def test_current_batch_context_is_prioritized_over_global_noise(tmp_path: Path) -> None:
+    workspace = Workspace(tmp_path)
+    create_workspace(workspace)
+    old_noise = tmp_path / "architecture_memory_noise.md"
+    old_noise.write_text(
+        "# architecture memory noise\n\n"
+        "This older note repeats architecture memory evidence context graph retrieval terms many times. "
+        "It is useful background but not part of the current upload batch.\n",
+        encoding="utf-8",
+    )
+    batch_one = tmp_path / "batch_receipt_note.md"
+    batch_one.write_text(
+        "# batch receipt note\n\n"
+        "The receipt must preserve the just-uploaded sources and let the user ask this exact batch.\n",
+        encoding="utf-8",
+    )
+    batch_two = tmp_path / "batch_evidence_note.md"
+    batch_two.write_text(
+        "# batch evidence note\n\n"
+        "Evidence should be answer-first, then user-stated reasons and graph paths.\n",
+        encoding="utf-8",
+    )
+    ingest_source(workspace, old_noise)
+    first = ingest_source(workspace, batch_one, why="This batch tests the upload receipt.")
+    second = ingest_source(workspace, batch_two, why="This batch tests evidence-first follow-up.")
+
+    retrieval = retrieve_for_question(
+        workspace,
+        "结合刚才上传的这批材料，我们下一步应该完善什么？",
+        context_source_ids=[first.source.id, second.source.id],
+    )
+
+    assert [context.source_id for context in retrieval.contexts[:2]] == [first.source.id, second.source.id]
+    assert retrieval.diagnostics.pinned_contexts == 2
+    assert any("current batch context" in reason for reason in retrieval.diagnostics.top_candidate_reasons)
 
 
 def test_retrieval_prioritizes_user_stated_pdf_over_ai_inferred_noise(
@@ -163,6 +204,31 @@ def test_provider_answer_still_appends_retrieval_diagnostics(tmp_path: Path) -> 
     assert "Provider body." in answer.text
     assert "## 检索诊断" in answer.text
     assert "- 关键词命中：" in answer.text
+
+
+def test_provider_prompt_and_mock_answer_are_conclusion_first() -> None:
+    assert "## 结论" in _SYNTHESIZE_SYSTEM
+    assert _SYNTHESIZE_SYSTEM.index("## 结论") < _SYNTHESIZE_SYSTEM.index("## 找回的原话")
+
+    text = MockLLM().synthesize_answer(
+        "刚才这批材料说明什么？",
+        [
+            {
+                "title": "Batch note",
+                "source_page": "wiki/sources/src.md",
+                "source_id": "src_batch",
+                "why_saved": "This batch preserves why the material mattered.",
+                "why_saved_status": "user-stated",
+                "space_name": "Inbox",
+                "related_project": "SnapGraph",
+                "open_loops": [],
+            }
+        ],
+        [],
+    )
+
+    assert "## 结论" in text
+    assert text.index("## 结论") < text.index("## 找回的原话")
 
 
 def test_save_answer_writes_question_page_index_and_log(tmp_path: Path) -> None:
