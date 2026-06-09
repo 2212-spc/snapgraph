@@ -74,7 +74,12 @@
           :focus-graph="focusGraph"
           :stages="recallStages"
           :current-question="currentRecallQuestion"
+          :topic="activeTopic"
+          :topic-turns="topicTurns"
+          :topic-state="topicState"
           @recall="runRecall"
+          @pin-source="togglePinnedSource"
+          @ask-open-loop="runRecall"
         />
 
         <SpacesView
@@ -209,6 +214,10 @@ import type {
   SavedQuestion,
   Source,
   Suggestion,
+  Topic,
+  TopicPayload,
+  TopicState,
+  TopicTurn,
   WorkspaceState,
 } from './types'
 
@@ -238,6 +247,10 @@ const focusGraph = ref<FocusGraph | null>(null)
 const askResult = ref<AskResponse | null>(null)
 const currentRecallQuestion = ref('')
 const recallStages = ref<RecallStage[]>([])
+const activeTopic = ref<Topic | null>(null)
+const topicTurns = ref<TopicTurn[]>([])
+const topicState = ref<TopicState | null>(null)
+const topics = ref<Topic[]>([])
 const collectResults = ref<IngestResponse[]>([])
 const recentBatchSourceIds = ref<string[]>([])
 const settingsOpen = ref(false)
@@ -271,7 +284,7 @@ const selectedSpaceName = computed(() => {
 
 const sessionTitle = computed(() => {
   if (activeView.value === 'recall') {
-    return currentRecallQuestion.value || askResult.value?.question || '新对话'
+    return activeTopic.value?.title || currentRecallQuestion.value || askResult.value?.question || '新话题'
   }
   if (activeView.value === 'spaces') return selectedSpaceName.value
   return '收集'
@@ -340,6 +353,9 @@ function startNewRecall() {
   askResult.value = null
   focusGraph.value = null
   recallStages.value = []
+  activeTopic.value = null
+  topicTurns.value = []
+  topicState.value = null
   recentBatchSourceIds.value = []
   activityOpen.value = false
 }
@@ -351,7 +367,7 @@ function startCollect() {
 
 async function refreshShell() {
   try {
-    await Promise.all([loadWorkspace(), loadConfig(), loadSpaces(), loadAllSources(), loadQuestions()])
+    await Promise.all([loadWorkspace(), loadConfig(), loadSpaces(), loadAllSources(), loadQuestions(), loadTopics()])
     if (selectedSpaceId.value !== 'all') await loadSpaceDetail(selectedSpaceId.value)
   } catch (error) {
     showToast(messageFromError(error), 'error')
@@ -377,6 +393,22 @@ async function loadAllSources() {
 
 async function loadQuestions() {
   savedQuestions.value = await api<SavedQuestion[]>('/api/questions')
+}
+
+async function loadTopics() {
+  const payload = await api<{ topics: Topic[] }>('/api/topics')
+  topics.value = payload.topics
+  if (!activeTopic.value && payload.topics.length) {
+    await loadTopicDetail(payload.topics[0].id)
+  }
+}
+
+async function loadTopicDetail(topicId: string) {
+  const payload = await api<TopicPayload>(`/api/topics/${encodeURIComponent(topicId)}`)
+  applyTopicPayload(payload)
+  askResult.value = null
+  focusGraph.value = null
+  currentRecallQuestion.value = payload.turns[payload.turns.length - 1]?.question || ''
 }
 
 async function selectSpace(spaceId: string) {
@@ -435,6 +467,10 @@ async function runRecall(question: string) {
   ]
   busyStage.value = '先找本地证据。'
   try {
+    if (!activeTopic.value) {
+      const topicPayload = await createTopic(question)
+      applyTopicPayload(topicPayload)
+    }
     focusGraph.value = await api<FocusGraph>('/api/focus', {
       method: 'POST',
       body: JSON.stringify(recallRequestPayload(question)),
@@ -457,7 +493,9 @@ async function runRecall(question: string) {
 }
 
 async function streamRecall(question: string) {
-  const response = await fetch('/api/ask/stream', {
+  const topicId = activeTopic.value?.id
+  const path = topicId ? `/api/topics/${encodeURIComponent(topicId)}/ask/stream` : '/api/ask/stream'
+  const response = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(recallRequestPayload(question, false)),
@@ -484,6 +522,38 @@ async function streamRecall(question: string) {
   }
 }
 
+async function createTopic(initialQuestion: string) {
+  return api<TopicPayload>('/api/topics', {
+    method: 'POST',
+    body: JSON.stringify({
+      initial_question: initialQuestion,
+      space_id: selectedSpaceId.value || 'all',
+    }),
+  })
+}
+
+function applyTopicPayload(payload: TopicPayload) {
+  activeTopic.value = payload.topic
+  topicTurns.value = payload.turns || []
+  topicState.value = payload.state
+}
+
+async function togglePinnedSource(sourceId: string) {
+  if (!activeTopic.value || busy.value) return
+  const current = new Set(topicState.value?.pinned_source_ids || activeTopic.value.pinned_source_ids || [])
+  if (current.has(sourceId)) current.delete(sourceId)
+  else current.add(sourceId)
+  try {
+    const payload = await api<TopicPayload>(`/api/topics/${encodeURIComponent(activeTopic.value.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pinned_source_ids: [...current] }),
+    })
+    applyTopicPayload(payload)
+  } catch (error) {
+    showToast(messageFromError(error), 'error')
+  }
+}
+
 function handleStreamEvent(raw: string, onChunk: (chunk: string) => void) {
   const eventLine = raw.split('\n').find((line) => line.startsWith('event:'))
   const dataLines = raw.split('\n').filter((line) => line.startsWith('data:'))
@@ -499,7 +569,14 @@ function handleStreamEvent(raw: string, onChunk: (chunk: string) => void) {
   } else if (event === 'final') {
     askResult.value = data as AskResponse
     if (askResult.value.focus_graph) focusGraph.value = askResult.value.focus_graph
+    if (askResult.value.topic && askResult.value.topic_state) {
+      activeTopic.value = askResult.value.topic
+      topicState.value = askResult.value.topic_state
+    }
+    if (askResult.value.turns) topicTurns.value = askResult.value.turns
     updateRecallStage({ id: 'write', label: '生成 AI 回复', status: 'done', detail: '回答已完成' })
+  } else if (event === 'topic') {
+    applyTopicPayload(data as TopicPayload)
   } else if (event === 'error') {
     throw new Error(String(data.message || 'Stream failed'))
   }
@@ -512,6 +589,9 @@ function partialAskResponse(question: string, text: string): AskResponse {
     contexts: focusGraph.value?.evidence_cards || [],
     graph_paths: [],
     focus_graph: focusGraph.value || emptyFocusGraph(),
+    topic: activeTopic.value || undefined,
+    topic_state: topicState.value || undefined,
+    turns: topicTurns.value,
   }
 }
 
@@ -534,14 +614,14 @@ function recallRequestPayload(question: string, save?: boolean) {
   const contextSourceIds = currentContextSourceIds()
   return {
     question,
-    space_id: 'all',
+    space_id: activeTopic.value?.space_id || selectedSpaceId.value || 'all',
     ...(save === undefined ? {} : { save }),
     ...(contextSourceIds.length ? { context_source_ids: contextSourceIds } : {}),
   }
 }
 
 function currentContextSourceIds() {
-  return recentBatchSourceIds.value
+  return [...new Set([...(topicState.value?.pinned_source_ids || []), ...recentBatchSourceIds.value])]
 }
 
 function updateRecallStage(stage: RecallStage) {

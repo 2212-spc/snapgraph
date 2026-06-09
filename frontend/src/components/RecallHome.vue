@@ -67,6 +67,11 @@
       :busy="busy"
       :stages="stages"
       :question="displayQuestion"
+      :topic="topic"
+      :topic-turns="topicTurns"
+      :topic-state="topicState"
+      @pin-source="(sourceId) => $emit('pinSource', sourceId)"
+      @ask-open-loop="(question) => $emit('askOpenLoop', question)"
     />
   </section>
 </template>
@@ -75,7 +80,7 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowUp, AtSign, Database, MessageSquare, Paperclip } from 'lucide-vue-next'
 import RecallResult from './RecallResult.vue'
-import type { AskResponse, FocusGraph, RecallStage } from '../types'
+import type { AskResponse, FocusGraph, RecallStage, Topic, TopicState, TopicTurn } from '../types'
 
 const props = defineProps<{
   busy: boolean
@@ -84,10 +89,15 @@ const props = defineProps<{
   focusGraph: FocusGraph | null
   stages: RecallStage[]
   currentQuestion: string
+  topic: Topic | null
+  topicTurns: TopicTurn[]
+  topicState: TopicState | null
 }>()
 
 const emit = defineEmits<{
   recall: [question: string]
+  pinSource: [sourceId: string]
+  askOpenLoop: [question: string]
 }>()
 
 const question = ref('')

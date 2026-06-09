@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnapGraph · 双层认知图谱 Demo</title>
+<script src="/vis-network.min.js"></script>
+<style>
+:root {
+  --bg: #f5f3f0;
+  --card: #ffffff;
+  --memory-bg: #ffffff;
+  --aux-bg: #f0ede8;
+  --border: #e2dfda;
+  --text: #2c2c2c;
+  --text-muted: #8b8680;
+  --accent: #1e40af;
+  --user-stated: #16a34a;
+  --user-stated-bg: #dcfce7;
+  --user-guided: #2563eb;
+  --user-guided-bg: #dbeafe;
+  --ai-inferred: #d97706;
+  --ai-inferred-bg: #fef3c7;
+  --open-loop: #b91c1c;
+  --open-loop-bg: #fee2e2;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.08);
+  --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* Header */
+.header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 20px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.header-left h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: -0.02em;
+}
+.header-left .tagline {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.header-right {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.badge {
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.badge.user-stated { background: var(--user-stated-bg); color: var(--user-stated); }
+.badge.user-guided { background: var(--user-guided-bg); color: var(--user-guided); }
+.badge.ai-inferred { background: var(--ai-inferred-bg); color: var(--ai-inferred); }
+.badge.open-loop { background: var(--open-loop-bg); color: var(--open-loop); }
+
+/* Main layout */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  grid-template-rows: auto 1fr;
+  gap: 0;
+  height: calc(100vh - 78px);
+}
+.graph-zone {
+  grid-row: 1 / 3;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  position: relative;
+}
+.panel-top {
+  grid-row: 1;
+  padding: 20px 24px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border);
+}
+.panel-bottom {
+  grid-row: 2;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+/* Layer divider */
+.layer-bar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.layer-bar.memory {
+  background: linear-gradient(135deg, #fafaf9, #ffffff);
+}
+.layer-bar.auxiliary {
+  background: linear-gradient(135deg, #f0ede8, #e8e5df);
+  border-top: 2px dashed #d4d0c8;
+}
+.layer-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.layer-label.memory { color: #1a1a2e; }
+.layer-label.auxiliary { color: #8b8680; }
+.layer-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.layer-toggle {
+  font-size: 0.75rem;
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: 14px;
+  font-weight: 500;
+}
+.layer-toggle:hover { background: #f0f4ff; }
+
+.graph-container {
+  position: relative;
+  overflow: hidden;
+}
+.graph-container.memory { flex: 3; min-height: 250px; }
+.graph-container.auxiliary { flex: 2; min-height: 150px; background: #fafaf8; }
+
+/* Section titles */
+.section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: 0.02em;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.section-title .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot.memory { background: var(--accent); }
+.dot.auxiliary { background: #b8b0a0; }
+
+/* Node detail */
+.node-detail-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.node-detail-card h3 {
+  font-size: 1rem;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+.node-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.field-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 0;
+  border-bottom: 1px solid #f5f3f0;
+  font-size: 0.82rem;
+  gap: 12px;
+}
+.field-label {
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-weight: 500;
+}
+.field-value {
+  text-align: right;
+  word-break: break-all;
+}
+
+/* Correction UI */
+.correction-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.btn:hover { filter: brightness(0.96); }
+.btn.confirm { background: #16a34a; color: #fff; border-color: #16a34a; }
+.btn.edit { background: #2563eb; color: #fff; border-color: #2563eb; }
+.btn.dismiss { background: #f3f4f6; color: var(--text-muted); }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.edit-inline {
+  margin-top: 10px;
+}
+.edit-inline textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 50px;
+}
+.edit-inline .btn-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Ingest simulation */
+.ingest-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.ingest-box textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+}
+.ingest-box .opt-hint {
+  margin-top: 6px;
+}
+.ingest-box .opt-hint input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-family: inherit;
+}
+.ingest-box .btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.ai-inference-result {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+.ai-inference-result .infer-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  gap: 12px;
+}
+.ai-inference-result .infer-label {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ai-inference-result .infer-value {
+  text-align: right;
+}
+
+.correction-done {
+  animation: pulseGreen 0.6s ease;
+}
+@keyframes pulseGreen {
+  0% { box-shadow: 0 0 0 0 rgba(22,163,74,.4); }
+  70% { box-shadow: 0 0 0 10px rgba(22,163,74,0); }
+  100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); }
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a2e;
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+.empty-state {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px;
+  font-size: 0.85rem;
+}
+
+/* Legend inline */
+.legend-inline {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+}
+.legend-inline span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 860px) {
+  .main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 300px auto auto;
+    height: auto;
+  }
+  .graph-zone { grid-row: 1; border-right: none; border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>🧠 SnapGraph · 双层认知图谱</h1>
+    <div class="tagline">极简输入 × AI 主推断 × 人工低成本纠偏</div>
+  </div>
+  <div class="header-right">
+    <span class="badge user-stated">● 用户明确陈述</span>
+    <span class="badge user-guided">● 用户引导</span>
+    <span class="badge ai-inferred">● AI 推断</span>
+    <span class="badge open-loop">◉ Open Loop</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Graph Zone -->
+  <div class="graph-zone" id="graphZone">
+    <div class="layer-bar memory">
+      <span class="layer-label memory">🧠 记忆层 · Memory Layer</span>
+      <span class="layer-hint">用户真正关心的内容：资料 / 保存理由 / 项目 / Open Loop</span>
+    </div>
+    <div class="graph-container memory" id="memoryGraph"></div>
+
+    <div class="layer-bar auxiliary">
+      <span class="layer-label auxiliary">🔬 辅助层 · Auxiliary Layer</span>
+      <span class="layer-hint">系统推断的补充信息，默认折叠</span>
+      <button class="layer-toggle" id="auxToggle" onclick="toggleAuxLayer()">▸ 折叠辅助层</button>
+    </div>
+    <div class="graph-container auxiliary" id="auxiliaryGraph"></div>
+  </div>
+
+  <!-- Right Panel: Detail -->
+  <div class="panel-top" id="detailPanel">
+    <div class="section-title"><span class="dot memory"></span> 节点详情</div>
+    <div class="empty-state" id="detailEmpty">← 点击图谱中的节点查看详情与信任状态</div>
+    <div id="detailContent" style="display:none;"></div>
+  </div>
+
+  <!-- Right Panel: Ingest Simulation -->
+  <div class="panel-bottom">
+    <div class="section-title"><span class="dot memory"></span> 模拟摄入 · Ingest</div>
+    <div class="ingest-box">
+      <textarea id="ingestContent" placeholder="粘贴一段内容...例如：一篇关于微服务的文章链接或摘录"></textarea>
+      <div class="opt-hint">
+        <input id="ingestHint" placeholder="可选：一句话提示（例如：这篇和架构选型有关）" />
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" onclick="simulateIngest()">⚡ 摄入并推断</button>
+        <span style="font-size:0.7rem;color:var(--text-muted)">尽量少填，让 AI 来推断</span>
+      </div>
+      <div id="inferenceResult"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// MOCK DATA
+// ============================================================
+const memoryNodesData = [
+  // Sources
+  { id: 's1', type: 'source', label: '📄 RSC性能对比\n2024 vs SSR',
+    why_saved: '技术选型需要性能数据支撑', why_status: 'user-stated',
+    project: '前端架构升级', open_loop: 'RSC对现有Redux的影响？',
+    layer: 'memory' },
+  { id: 's2', type: 'source', label: '📄 Next.js App Router\n最佳实践',
+    why_saved: 'RSC的主要实现方式文档', why_status: 'user-stated',
+    project: '前端架构升级', open_loop: 'Server Actions vs API路由？',
+    layer: 'memory' },
+  { id: 's3', type: 'source', label: '📄 某大厂RSC迁移\n踩坑记录',
+    why_saved: '', why_status: 'ai-inferred', ai_why: '该用户近期在评估RSC迁移方案，此文章为真实案例参考',
+    project: '前端架构升级', open_loop: '迁移成本评估',
+    layer: 'memory' },
+  { id: 's4', type: 'source', label: '📄 React官方RSC\n设计文档',
+    why_saved: '', why_status: 'ai-inferred', ai_why: '用户需要官方定义作为技术决策基准',
+    project: '前端架构升级', open_loop: 'RSC对现有Redux的影响？',
+    layer: 'memory' },
+  // Projects
+  { id: 'p1', type: 'project', label: '📁 前端架构升级',
+    layer: 'memory' },
+  // Open Loops
+  { id: 'ol1', type: 'open_loop', label: '◉ RSC对现有Redux\n状态管理的影响？',
+    layer: 'memory' },
+  { id: 'ol2', type: 'open_loop', label: '◉ Server Actions\n能否替代现有API路由？',
+    layer: 'memory' },
+  { id: 'ol3', type: 'open_loop', label: '◉ 迁移成本与ROI\n是否合理？',
+    layer: 'memory' },
+];
+
+const auxiliaryNodesData = [
+  { id: 'fq1', type: 'future_question', label: '❓ 如果不用RSC\n有哪些替代方案？',
+    layer: 'auxiliary' },
+  { id: 'fq2', type: 'future_question', label: '❓ RSC的SEO收益\n是否值得迁移成本？',
+    layer: 'auxiliary' },
+  { id: 'fq3', type: 'future_question', label: '❓ 团队成员对RSC\n的学习曲线？',
+    layer: 'auxiliary' },
+  { id: 'diag1', type: 'diagnostic', label: '📊 检索命中率\n0.85',
+    layer: 'auxiliary' },
+  { id: 'diag2', type: 'diagnostic', label: '📊 证据置信度\n分布: μ=0.72',
+    layer: 'auxiliary' },
+];
+
+const memoryEdges = [
+  { from: 's1', to: 'p1', label: 'related_to' },
+  { from: 's2', to: 'p1', label: 'related_to' },
+  { from: 's3', to: 'p1', label: 'related_to' },
+  { from: 's4', to: 'p1', label: 'related_to' },
+  { from: 's1', to: 'ol1', label: 'raises' },
+  { from: 's4', to: 'ol1', label: 'raises' },
+  { from: 's2', to: 'ol2', label: 'raises' },
+  { from: 's3', to: 'ol3', label: 'raises' },
+  // Source-to-source similarity
+  { from: 's1', to: 's4', label: 'similar' },
+  { from: 's2', to: 's3', label: 'similar' },
+];
+
+const auxiliaryEdges = [
+  { from: 's1', to: 'fq1', label: 'spawns', dashes: true },
+  { from: 's4', to: 'fq2', label: 'spawns', dashes: true },
+  { from: 'p1', to: 'fq3', label: 'spawns', dashes: true },
+  { from: 'diag1', to: 's1', label: 'measures', dashes: true },
+  { from: 'diag2', to: 'p1', label: 'measures', dashes: true },
+];
+
+// Map node id -> full data
+const nodeMap = {};
+[...memoryNodesData, ...auxiliaryNodesData].forEach(n => { nodeMap[n.id] = n; });
+
+// ============================================================
+// GRAPH RENDERING
+// ============================================================
+const nodeColors = {
+  source:     { bg: '#EBF4FF', border: '#4E79A7', font: '#1e3a5f' },
+  project:    { bg: '#FFF2E5', border: '#F28E2B', font: '#7c4a00' },
+  open_loop:  { bg: '#FFE8E8', border: '#E15759', font: '#7c2020' },
+  future_question: { bg: '#F5F0FF', border: '#B07AA1', font: '#4a3058' },
+  diagnostic: { bg: '#F0F0F0', border: '#9C9C9C', font: '#555' },
+};
+
+const trustShape = {
+  'user-stated': { borderWidth: 3, borderDashes: false },
+  'user-guided': { borderWidth: 2, borderDashes: [8, 4] },
+  'ai-inferred': { borderWidth: 2, borderDashes: [4, 4] },
+};
+
+function buildVisNodes(dataList) {
+  return dataList.map(n => {
+    const colors = nodeColors[n.type] || nodeColors.diagnostic;
+    const trust = trustShape[n.why_status] || {};
+    const isOpenLoop = n.type === 'open_loop';
+    return {
+      id: n.id,
+      label: n.label,
+      shape: isOpenLoop ? 'diamond' : 'box',
+      color: {
+        background: colors.bg,
+        border: colors.border,
+        highlight: { background: colors.bg, border: '#1a1a2e' },
+      },
+      font: { color: colors.font, size: 12, face: '-apple-system, "Noto Sans SC", sans-serif', multi: true },
+      borderWidth: trust.borderWidth || 2,
+      shapeProperties: { borderDashes: trust.borderDashes || false },
+      margin: 10,
+      widthConstraint: { minimum: 80, maximum: 160 },
+    };
+  });
+}
+
+function buildVisEdges(edgeList) {
+  return edgeList.map(e => ({
+    from: e.from,
+    to: e.target || e.to,
+    label: e.label || e.relation || '',
+    dashes: e.dashes || false,
+    color: { color: e.dashes ? '#c5bfb2' : '#8b8680', highlight: '#1a1a2e' },
+    font: { color: '#999', size: 9, strokeWidth: 0, align: 'top' },
+    arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+    width: e.dashes ? 1 : 1.5,
+  }));
+}
+
+function positionNodesInLayer(nodes, containerId, topFraction) {
+  // Manual positioning: memory layer top 0.0-0.45, auxiliary layer 0.05-0.40
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const w = el.clientWidth || 700;
+  const h = el.clientHeight || 350;
+
+  // Simple grid-based placement
+  const cols = Math.ceil(Math.sqrt(nodes.length * (w / h)));
+  const rows = Math.ceil(nodes.length / cols);
+
+  return nodes.map((n, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const xPad = w * 0.1;
+    const yPad = h * 0.15;
+    const xRange = w - 2 * xPad;
+    const yRange = h - 2 * yPad;
+    return {
+      ...n,
+      x: cols > 1 ? xPad + (col / (cols - 1)) * xRange : w / 2,
+      y: rows > 1 ? yPad + (row / (rows - 1)) * yRange : h / 2,
+      fixed: true,
+    };
+  });
+}
+
+let memoryNetwork, auxiliaryNetwork;
+
+function renderGraphs() {
+  const memContainer = document.getElementById('memoryGraph');
+  const auxContainer = document.getElementById('auxiliaryGraph');
+
+  if (!memContainer || !auxContainer) return;
+
+  // Ensure containers have dimensions before rendering vis
+  if (memContainer.clientHeight === 0 || auxContainer.clientHeight === 0) {
+    requestAnimationFrame(() => renderGraphs());
+    return;
+  }
+
+  try {
+    // Memory layer
+    const memNodes = buildVisNodes(memoryNodesData);
+    const positionedMem = positionNodesInLayer(memNodes, 'memoryGraph');
+    const memData = { nodes: new vis.DataSet(positionedMem), edges: new vis.DataSet(buildVisEdges(memoryEdges)) };
+    const memOpts = {
+      physics: false,
+      interaction: { dragNodes: false, zoomView: true, navigationButtons: false, hover: true },
+      layout: { randomSeed: 1 },
+      clickToUse: false,
+    };
+    if (memoryNetwork) { memoryNetwork.destroy(); memoryNetwork = null; }
+    memoryNetwork = new vis.Network(memContainer, memData, memOpts);
+    memoryNetwork.on('click', function(params) {
+      if (params.nodes.length > 0) showNodeDetail(params.nodes[0]);
+    });
+  } catch (e) {
+    console.error('Memory graph render failed:', e);
+    memContainer.innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">图谱渲染失败，请刷新页面</div>';
+  }
+
+  try {
+    // Auxiliary layer
+    const auxNodes = buildVisNodes(auxiliaryNodesData);
+    const positionedAux = positionNodesInLayer(auxNodes, 'auxiliaryGraph');
+    const auxData = { nodes: new vis.DataSet(positionedAux), edges: new vis.DataSet(buildVisEdges(auxiliaryEdges)) };
+    const auxOpts = {
+      physics: false,
+      interaction: { dragNodes: false, zoomView: true, navigationButtons: false, hover: true },
+      layout: { randomSeed: 2 },
+      clickToUse: false,
+    };
+    if (auxiliaryNetwork) { auxiliaryNetwork.destroy(); auxiliaryNetwork = null; }
+    auxiliaryNetwork = new vis.Network(auxContainer, auxData, auxOpts);
+    auxiliaryNetwork.on('click', function(params) {
+      if (params.nodes.length > 0) showNodeDetail(params.nodes[0]);
+    });
+  } catch (e) {
+    console.error('Auxiliary graph render failed:', e);
+    auxContainer.innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">辅助图谱渲染失败，请刷新页面</div>';
+  }
+}
+
+// Resize handler
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(renderGraphs, 200);
+});
+
+// ============================================================
+// NODE DETAIL PANEL
+// ============================================================
+let activeNodeId = null;
+
+function showNodeDetail(nodeId) {
+  activeNodeId = nodeId;
+  const node = nodeMap[nodeId];
+  if (!node) return;
+
+  document.getElementById('detailEmpty').style.display = 'none';
+  const container = document.getElementById('detailContent');
+  container.style.display = 'block';
+
+  const isMemory = node.layer === 'memory';
+  const isAI = node.why_status === 'ai-inferred';
+  const statusLabel = {
+    'user-stated': '用户明确陈述',
+    'user-guided': '用户引导',
+    'ai-inferred': 'AI 推断',
+  }[node.why_status] || '—';
+  const statusCls = node.why_status || '';
+
+  let html = `<div class="node-detail-card" id="nodeCard">`;
+  html += `<h3>${node.label.replace(/\n/g, ' ')}</h3>`;
+  html += `<div class="node-meta">`;
+  html += `<span class="badge ${statusCls}">${statusLabel}</span>`;
+  html += `<span style="font-size:0.72rem;color:var(--text-muted)">${node.type}</span>`;
+  html += `<span style="font-size:0.72rem;color:var(--text-muted)">${isMemory ? '记忆层' : '辅助层'}</span>`;
+  html += `</div>`;
+
+  if (node.why_saved) {
+    html += `<div class="field-row"><span class="field-label">保存理由</span><span class="field-value">${node.why_saved}</span></div>`;
+  }
+  if (node.ai_why) {
+    html += `<div class="field-row"><span class="field-label">AI 推断理由</span><span class="field-value" style="color:var(--ai-inferred)">${node.ai_why}</span></div>`;
+  }
+  if (node.project) {
+    html += `<div class="field-row"><span class="field-label">关联项目</span><span class="field-value">${node.project}</span></div>`;
+  }
+  if (node.open_loop) {
+    html += `<div class="field-row"><span class="field-label">Open Loop</span><span class="field-value" style="color:var(--open-loop)">${node.open_loop}</span></div>`;
+  }
+
+  // Correction UI for AI-inferred memory nodes
+  if (isAI && isMemory) {
+    html += `<div class="correction-buttons">`;
+    html += `<button class="btn confirm" onclick="correctNode('${nodeId}','confirm')">✓ 确认</button>`;
+    html += `<button class="btn edit" onclick="correctNode('${nodeId}','edit')">✎ 修改</button>`;
+    html += `<button class="btn dismiss" onclick="correctNode('${nodeId}','dismiss')">✕ 忽略</button>`;
+    html += `</div>`;
+    html += `<div class="edit-inline" id="editBox" style="display:none;">`;
+    html += `<textarea id="editText" placeholder="修改保存理由...">${node.ai_why || ''}</textarea>`;
+    html += `<div class="btn-row">`;
+    html += `<button class="btn confirm" onclick="saveEdit('${nodeId}')">保存</button>`;
+    html += `<button class="btn dismiss" onclick="cancelEdit()">取消</button>`;
+    html += `</div></div>`;
+  }
+
+  // Already corrected state
+  if (node._corrected) {
+    html += `<div style="margin-top:8px;font-size:0.75rem;color:var(--user-stated);font-weight:600;">`;
+    html += node._corrected === 'confirmed' ? '✓ 已确认为用户陈述' : '✓ 已由用户修改';
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+function correctNode(nodeId, action) {
+  const node = nodeMap[nodeId];
+  if (action === 'confirm') {
+    node.why_status = 'user-stated';
+    node._corrected = 'confirmed';
+    node.why_saved = node.ai_why;
+    showToast('已确认为用户陈述 → 升级至记忆层核心');
+    refreshAfterCorrection(nodeId);
+  } else if (action === 'edit') {
+    document.getElementById('editBox').style.display = 'block';
+  } else if (action === 'dismiss') {
+    // Move to auxiliary layer
+    node.layer = 'auxiliary';
+    node.type = 'future_question';
+    auxiliaryNodesData.push(node);
+    const idx = memoryNodesData.findIndex(n => n.id === nodeId);
+    if (idx >= 0) memoryNodesData.splice(idx, 1);
+    showToast('已降级至辅助层');
+    renderGraphs();
+    showNodeDetail(nodeId);
+  }
+}
+
+function saveEdit(nodeId) {
+  const newText = document.getElementById('editText').value.trim();
+  if (!newText) return;
+  const node = nodeMap[nodeId];
+  node.why_saved = newText;
+  node.why_status = 'user-stated';
+  node._corrected = 'edited';
+  node.ai_why = undefined;
+  document.getElementById('editBox').style.display = 'none';
+  showToast('修改已保存 → 标记为用户陈述');
+  refreshAfterCorrection(nodeId);
+}
+
+function cancelEdit() {
+  document.getElementById('editBox').style.display = 'none';
+}
+
+function refreshAfterCorrection(nodeId) {
+  document.getElementById('nodeCard')?.classList.add('correction-done');
+  setTimeout(() => {
+    document.getElementById('nodeCard')?.classList.remove('correction-done');
+    renderGraphs();
+    showNodeDetail(nodeId);
+  }, 400);
+}
+
+// ============================================================
+// AUXILIARY LAYER TOGGLE
+// ============================================================
+let auxVisible = true;
+function toggleAuxLayer() {
+  auxVisible = !auxVisible;
+  const container = document.getElementById('auxiliaryGraph');
+  const btn = document.getElementById('auxToggle');
+  if (auxVisible) {
+    container.style.display = '';
+    btn.textContent = '▸ 折叠辅助层';
+    setTimeout(renderGraphs, 100);
+  } else {
+    container.style.display = 'none';
+    btn.textContent = '▸ 展开辅助层';
+  }
+}
+
+// ============================================================
+// INGEST SIMULATION
+// ============================================================
+function simulateIngest() {
+  const content = document.getElementById('ingestContent').value.trim();
+  const hint = document.getElementById('ingestHint').value.trim();
+  if (!content) { showToast('请先粘贴内容'); return; }
+
+  const resultDiv = document.getElementById('inferenceResult');
+  resultDiv.innerHTML = '<div style="padding:8px;font-size:0.8rem;color:var(--text-muted)">⏳ AI 正在推断...</div>';
+
+  setTimeout(() => {
+    // Simulate AI inference
+    const aiWhy = generateMockWhy(content, hint);
+    const aiProject = hint.includes('架构') || hint.includes('微服务') ? '后端架构演进' : '未分类项目';
+    const aiLoop = generateMockOpenLoop(content);
+
+    resultDiv.innerHTML = `
+      <div class="ai-inference-result">
+        <div style="font-weight:700;margin-bottom:6px;font-size:0.82rem;">🤖 AI 推断结果</div>
+        <div class="infer-row"><span class="infer-label">保存理由</span><span class="infer-value" style="color:var(--ai-inferred)">${aiWhy}</span></div>
+        <div class="infer-row"><span class="infer-label">关联项目</span><span class="infer-value">${aiProject}</span></div>
+        <div class="infer-row"><span class="infer-label">Open Loop</span><span class="infer-value" style="color:var(--open-loop)">${aiLoop}</span></div>
+        <div class="infer-row"><span class="infer-label">状态</span><span class="infer-value"><span class="badge ai-inferred">AI-inferred</span></span></div>
+        <div class="correction-buttons" style="margin-top:10px;">
+          <button class="btn confirm" onclick="confirmIngest()">✓ 确认全部</button>
+          <button class="btn edit" onclick="showToast('修改功能：可逐条编辑 AI 推断结果')">✎ 逐条修改</button>
+          <button class="btn dismiss" onclick="dismissIngest()">✕ 仅保存原文</button>
+        </div>
+      </div>
+    `;
+  }, 800);
+}
+
+function generateMockWhy(content, hint) {
+  if (hint) return `用户提示「${hint}」，结合内容推断：该资料与当前技术决策相关，可能是为了对比方案或记录参考`;
+  return '系统推断：该内容与用户知识库中近期关注的技术主题存在关联，可能服务于正在进行的技术选型或学习计划';
+}
+
+function generateMockOpenLoop(content) {
+  const loops = [
+    '该方案的生产环境成熟度？',
+    '与现有系统集成的成本？',
+    '团队是否需要额外培训？',
+    '是否有更好的替代方案？',
+  ];
+  return loops[Math.floor(Math.random() * loops.length)];
+}
+
+function confirmIngest() {
+  document.getElementById('inferenceResult').innerHTML =
+    '<div style="padding:8px;font-size:0.8rem;color:var(--user-stated);font-weight:600;animation:pulseGreen 0.6s ease;">✓ 已确认 → 所有推断升级为 user-stated，已加入记忆层图谱</div>';
+  showToast('摄入完成：推断已确认并加入记忆层');
+}
+
+function dismissIngest() {
+  document.getElementById('inferenceResult').innerHTML =
+    '<div style="padding:8px;font-size:0.8rem;color:var(--text-muted);">原文已保存，AI 推断已丢弃。可在之后手动补充保存理由。</div>';
+  showToast('原文已保存（无推断标注）');
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  // Wait for layout to complete before rendering vis graphs
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      renderGraphs();
+    });
+  });
+});
+
+// After fonts load, re-render
+document.fonts?.ready.then(() => {
+  requestAnimationFrame(() => renderGraphs());
+});
+</script>
+</body>
+</html>
