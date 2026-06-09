@@ -269,6 +269,7 @@ const emit = defineEmits<{
   collect: [payload: CollectPayload]
   openSpace: [spaceId: string]
   askBatch: [question: string]
+  updateTitle: [sourceId: string, title: string]
 }>()
 
 const text = ref('')
@@ -460,6 +461,31 @@ function openSpace() {
 
 function askBatch() {
   emit('askBatch', batchQuestion.value)
+}
+
+async function startTitleEdit() {
+  titleDraft.value = receiptTitle.value
+  titleEditOpen.value = true
+  await nextTick()
+  titleInput.value?.focus()
+}
+
+function confirmTitleEdit() {
+  if (props.busy) return
+  const receipt = activeReceipt.value
+  const nextTitle = titleDraft.value.trim()
+  if (!receipt || !nextTitle) return
+
+  titleEditOpen.value = false
+  titleDraft.value = ''
+  if (nextTitle !== receiptTitle.value) {
+    emit('updateTitle', receipt.source_id, nextTitle)
+  }
+}
+
+function cancelTitleEdit() {
+  titleEditOpen.value = false
+  titleDraft.value = ''
 }
 
 async function continueCollect() {

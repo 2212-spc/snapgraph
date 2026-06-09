@@ -243,7 +243,7 @@
           <p>默认先收起，需要时再展开查看材料和摘录。</p>
         </div>
         <button class="paper-button toggle-button" type="button" @click="relatedMaterialsOpen = !relatedMaterialsOpen">
-          {{ relatedMaterialsOpen ? '收回' : '展开' }}
+          {{ relatedMaterialsOpen ? '收回材料' : '展开材料' }}
         </button>
       </div>
 
@@ -278,7 +278,7 @@
             type="button"
             @click="showAllMaterials = !showAllMaterials"
           >
-            {{ showAllMaterials ? '收起更多材料' : `展开更多材料（+${materials.length - previewLimit}）` }}
+            {{ showAllMaterials ? '收起更多材料' : `查看全部材料（+${materials.length - previewLimit}）` }}
           </button>
         </div>
         <p v-else class="subtle-empty-state">这次找回还没有返回可展示的相关材料。</p>

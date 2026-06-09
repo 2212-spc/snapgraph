@@ -112,6 +112,7 @@
           @collect="collectMaterials"
           @open-space="openCollectedSpace"
           @ask-batch="askRecentBatch"
+          @update-title="updateSourceTitle"
         />
       </main>
     </section>
