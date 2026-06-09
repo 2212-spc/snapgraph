@@ -22,6 +22,33 @@
       </div>
 
       <div class="answer-chat-thread">
+        <template v-if="topicMessages.length">
+          <template v-for="turn in topicMessages" :key="turn.id">
+            <article class="answer-message is-user">
+              <span class="answer-avatar">你</span>
+              <div class="answer-bubble">
+                <span class="answer-question-label">第 {{ turn.index }} 轮追问</span>
+                <p class="answer-question">{{ turn.question }}</p>
+              </div>
+            </article>
+
+            <article class="answer-message is-assistant">
+              <span class="answer-avatar">S</span>
+              <div class="answer-bubble answer-card-body">
+                <span class="answer-question-label">SnapGraph</span>
+                <p v-for="block in turn.blocks" :key="`${turn.id}-${block}`">{{ block }}</p>
+                <details class="turn-evidence-fold">
+                  <summary>本轮证据链</summary>
+                  <p v-if="turn.evidence_source_ids.length">材料：{{ turn.evidence_source_ids.join(' · ') }}</p>
+                  <p v-if="turn.graph_paths.length">路径：{{ turn.graph_paths.join(' / ') }}</p>
+                  <p v-if="!turn.evidence_source_ids.length && !turn.graph_paths.length">这轮没有稳定证据链。</p>
+                </details>
+              </div>
+            </article>
+          </template>
+        </template>
+
+        <template v-else>
         <article class="answer-message is-user">
           <span class="answer-avatar">你</span>
           <div class="answer-bubble">
@@ -37,8 +64,22 @@
             <p v-for="block in answerBlocks" :key="block">{{ block }}</p>
           </div>
         </article>
+        </template>
       </div>
     </article>
+
+    <section v-if="topicState" class="topic-state-strip">
+      <div>
+        <span class="section-kicker">当前话题</span>
+        <p>{{ topicState.summary || topic?.title || '这个话题正在形成，继续追问后会沉淀主题。' }}</p>
+      </div>
+      <div class="topic-state-metrics">
+        <span>{{ topicState.turn_count }} 轮追问</span>
+        <span>{{ topicState.evidence_source_ids.length }} 条材料参与</span>
+        <span>{{ topicState.user_stated_count }} 用户原话</span>
+        <span>{{ topicState.ai_inferred_count }} AI 推断</span>
+      </div>
+    </section>
 
     <details v-if="stages.length" class="agent-trace agent-trace-compact" :open="busy" aria-label="AI response progress">
       <summary class="agent-trace-summary">
@@ -266,7 +307,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { AskResponse, EvidenceCard, FocusGraph, RecallStage } from '../types'
+import type { AskResponse, EvidenceCard, FocusGraph, RecallStage, Topic, TopicState, TopicTurn } from '../types'
 
 type SummaryChip = {
   label: string
@@ -279,6 +320,14 @@ const props = defineProps<{
   busy: boolean
   stages: RecallStage[]
   question: string
+  topic: Topic | null
+  topicTurns: TopicTurn[]
+  topicState: TopicState | null
+}>()
+
+defineEmits<{
+  pinSource: [sourceId: string]
+  askOpenLoop: [question: string]
 }>()
 
 const previewLimit = 3
@@ -309,6 +358,31 @@ const graphPaths = computed(() => {
 })
 const answerText = computed(() => normalizeAnswerText(sectionText('## 结论') || sectionText('## AI 探索回应') || fallbackAnswerText()))
 const answerBlocks = computed(() => splitBlocks(answerText.value))
+const topicMessages = computed(() => {
+  const turns = [...(props.topicTurns || [])]
+  const latestTurn = turns[turns.length - 1]
+  if (
+    props.busy &&
+    props.result?.text &&
+    props.result.question &&
+    latestTurn?.question !== props.result.question
+  ) {
+    turns.push({
+      id: 'streaming',
+      topic_id: props.topic?.id || '',
+      question: props.result.question,
+      answer: props.result.text,
+      evidence_source_ids: props.result.contexts?.map((context) => context.source_id) || [],
+      graph_paths: props.result.graph_paths || [],
+      created_at: '',
+    })
+  }
+  return turns.map((turn, index) => ({
+    ...turn,
+    index: index + 1,
+    blocks: splitBlocks(normalizeAnswerText(answerSummaryFromText(turn.answer))),
+  }))
+})
 const nextText = computed(() => sectionText('## 下一步') || fallbackNext())
 const questionText = computed(() => props.question || props.result?.question || '正在从你的本地记忆里组织这个问题。')
 const evidenceCompactSummary = computed(() => {
@@ -362,6 +436,20 @@ watch(materials, () => {
 
 function sectionText(heading: string): string {
   const markdown = props.result?.text || ''
+  const start = markdown.indexOf(heading)
+  if (start < 0) return ''
+  const after = markdown.slice(start + heading.length)
+  const next = after.search(/\n##\s+/)
+  return cleanText((next >= 0 ? after.slice(0, next) : after).trim())
+}
+
+function answerSummaryFromText(markdown: string): string {
+  const conclusion = markdownSection(markdown, '## 结论')
+  const exploration = markdownSection(markdown, '## AI 探索回应')
+  return conclusion || exploration || markdown.replace(/^#.*$/gm, '').trim()
+}
+
+function markdownSection(markdown: string, heading: string): string {
   const start = markdown.indexOf(heading)
   if (start < 0) return ''
   const after = markdown.slice(start + heading.length)
