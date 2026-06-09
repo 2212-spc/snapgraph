@@ -153,6 +153,32 @@ def initialize_database(workspace: Workspace) -> None:
         _ensure_column(conn, "cognitive_contexts", "reviewed_at", "TEXT NOT NULL DEFAULT ''")
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS trust_review_history (
+                id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                previous_status TEXT NOT NULL,
+                next_status TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                previous_why_saved TEXT NOT NULL DEFAULT '',
+                next_why_saved TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(source_id) REFERENCES sources(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS trust_open_loop_states (
+                loop_id TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS nodes (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,

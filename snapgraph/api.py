@@ -70,6 +70,7 @@ from .topics import (
     topic_context_query,
     update_topic,
 )
+from .trust_center import get_review_detail, list_review_items, trust_diagnostics, trust_summary
 from .wiki import question_pages, source_pages
 from .workspace import Workspace, create_workspace, get_workspace
 
@@ -373,6 +374,48 @@ def api_source_review_update(source_id: str, payload: dict):
         raise HTTPException(400, str(exc)) from exc
     detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
     return {"detail": detail or {}}
+
+
+# 鈹€鈹€ Trust operations 鈹€鈹€
+
+@app.get("/api/trust/review")
+def api_trust_review(
+    status: str = "",
+    risk: str = "",
+    space_id: str = "",
+    q: str = "",
+    inferred: str = "",
+    has_open_loops: bool | None = None,
+):
+    return list_review_items(
+        _workspace(),
+        {
+            "status": status,
+            "risk": risk,
+            "space_id": space_id,
+            "q": q,
+            "inferred": inferred,
+            "has_open_loops": has_open_loops,
+        },
+    )
+
+
+@app.get("/api/trust/review/{source_id}")
+def api_trust_review_detail(source_id: str):
+    try:
+        return get_review_detail(_workspace(), source_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+
+
+@app.get("/api/trust/summary")
+def api_trust_summary():
+    return trust_summary(_workspace())
+
+
+@app.get("/api/trust/diagnostics")
+def api_trust_diagnostics():
+    return trust_diagnostics(_workspace())
 
 
 @app.post("/api/ingest")
