@@ -3,14 +3,18 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import uuid
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
+from .ingest import review_ai_inference
 from .models import DEFAULT_GRAPH_SPACE_ID
 from .workspace import Workspace
 
 
 OPEN_LOOP_STATES = {"active", "next", "resolved", "dismissed"}
+REVIEW_ACTIONS = {"confirmed", "rewritten", "rejected", "deferred"}
 REVIEW_RISK_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
 
@@ -112,6 +116,70 @@ def trust_diagnostics(workspace: Workspace) -> dict:
     }
 
 
+def batch_review(
+    workspace: Workspace,
+    source_ids: list[str],
+    action: str,
+    note: str = "",
+    rewrites: dict[str, str] | None = None,
+) -> dict:
+    """Apply one trust review action to multiple sources and record history."""
+    status = str(action or "").strip()
+    if status not in REVIEW_ACTIONS:
+        raise ValueError("action must be confirmed, rewritten, rejected, or deferred")
+    clean_source_ids = _clean_source_ids(source_ids)
+    if not clean_source_ids:
+        raise ValueError("source_ids is required")
+    rewrite_map = {str(key): str(value).strip() for key, value in (rewrites or {}).items()}
+    if status == "rewritten":
+        missing = [source_id for source_id in clean_source_ids if not rewrite_map.get(source_id)]
+        if missing:
+            raise ValueError("rewrite text is required for every rewritten source")
+
+    before_by_id = {item.source_id: item for item in _source_rows(workspace)}
+    updated_source_ids: list[str] = []
+    errors: list[dict] = []
+    for source_id in clean_source_ids:
+        before = before_by_id.get(source_id)
+        if not before:
+            errors.append({"source_id": source_id, "error": "Source not found"})
+            continue
+        try:
+            next_context = review_ai_inference(
+                workspace,
+                source_id,
+                review_status=status,
+                review_note=note,
+                why_saved=rewrite_map.get(source_id),
+            )
+        except (KeyError, ValueError) as exc:
+            errors.append({"source_id": source_id, "error": str(exc)})
+            continue
+        _insert_history(
+            workspace,
+            source_id=source_id,
+            action=status,
+            previous_status=before.review_status,
+            next_status=next_context.review_status,
+            note=note,
+            previous_why_saved=before.why_saved,
+            next_why_saved=next_context.why_saved,
+        )
+        updated_source_ids.append(source_id)
+
+    updated_items = [
+        item for item in list_review_items(workspace)["items"]
+        if item["source_id"] in set(updated_source_ids)
+    ]
+    return {
+        "updated_count": len(updated_source_ids),
+        "failed_count": len(errors),
+        "items": updated_items,
+        "errors": errors,
+        "summary": trust_summary(workspace),
+    }
+
+
 def list_open_loops(workspace: Workspace, state: str | None = None) -> dict:
     """Materialize source and topic open loops with persisted lifecycle state."""
     state_filter = (state or "").strip()
@@ -150,6 +218,58 @@ def list_open_loops(workspace: Workspace, state: str | None = None) -> dict:
         "items": items,
         "summary": _open_loop_summary(items),
     }
+
+
+def _clean_source_ids(source_ids: list[str]) -> list[str]:
+    seen = set()
+    clean = []
+    for raw in source_ids:
+        source_id = str(raw or "").strip()
+        if source_id and source_id not in seen:
+            clean.append(source_id)
+            seen.add(source_id)
+    return clean
+
+
+def _insert_history(
+    workspace: Workspace,
+    *,
+    source_id: str,
+    action: str,
+    previous_status: str,
+    next_status: str,
+    note: str,
+    previous_why_saved: str,
+    next_why_saved: str,
+) -> None:
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO trust_review_history (
+                id,
+                source_id,
+                action,
+                previous_status,
+                next_status,
+                note,
+                previous_why_saved,
+                next_why_saved,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                f"trh_{uuid.uuid4().hex}",
+                source_id,
+                action,
+                previous_status,
+                next_status,
+                str(note or "").strip(),
+                previous_why_saved,
+                next_why_saved,
+                datetime.now(timezone.utc).isoformat(),
+            ],
+        )
 
 
 def _source_rows(workspace: Workspace) -> list[_SourceProjection]:

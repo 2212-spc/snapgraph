@@ -70,7 +70,7 @@ from .topics import (
     topic_context_query,
     update_topic,
 )
-from .trust_center import get_review_detail, list_review_items, trust_diagnostics, trust_summary
+from .trust_center import batch_review, get_review_detail, list_review_items, trust_diagnostics, trust_summary
 from .wiki import question_pages, source_pages
 from .workspace import Workspace, create_workspace, get_workspace
 
@@ -398,6 +398,20 @@ def api_trust_review(
             "has_open_loops": has_open_loops,
         },
     )
+
+
+@app.post("/api/trust/review/batch")
+def api_trust_review_batch(payload: dict):
+    try:
+        return batch_review(
+            _workspace(),
+            source_ids=payload.get("source_ids") or [],
+            action=str(payload.get("action") or ""),
+            note=str(payload.get("note") or ""),
+            rewrites=payload.get("rewrites") or {},
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.get("/api/trust/review/{source_id}")

@@ -54,3 +54,41 @@ def test_trust_diagnostics_reports_counts(tmp_path: Path, monkeypatch) -> None:
     assert "ai_inferred_unreviewed" in diagnostics
     assert "open_loop_total" in diagnostics
     assert "warnings" in diagnostics
+
+
+def test_trust_batch_confirm_writes_history(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+    item = next(
+        item
+        for item in client.get("/api/trust/review").json()["items"]
+        if item["why_saved_status"] == "AI-inferred"
+    )
+
+    response = client.post(
+        "/api/trust/review/batch",
+        json={"source_ids": [item["source_id"]], "action": "confirmed", "note": "User confirmed."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["updated_count"] == 1
+    detail = client.get(f"/api/trust/review/{item['source_id']}").json()
+    assert detail["item"]["review_status"] == "confirmed"
+    assert detail["history"][0]["action"] == "confirmed"
+
+
+def test_trust_batch_rewrite_requires_replacement_text(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+    source_id = client.get("/api/trust/review").json()["items"][0]["source_id"]
+
+    response = client.post(
+        "/api/trust/review/batch",
+        json={"source_ids": [source_id], "action": "rewritten", "note": "Missing rewrite map."},
+    )
+
+    assert response.status_code == 400
+    assert "rewrite" in response.json()["detail"].lower()
