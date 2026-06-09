@@ -104,6 +104,23 @@
           @start-collect="startCollect"
         />
 
+        <TrustCenterView
+          v-else-if="activeView === 'trust'"
+          :review="trustReview"
+          :detail="trustReviewDetail"
+          :open-loops="trustOpenLoops"
+          :diagnostics="trustDiagnostics"
+          :selected-source-ids="selectedTrustSourceIds"
+          :filters="trustFilters"
+          :busy="busy"
+          @refresh="loadTrustCenter"
+          @select-review="selectTrustReview"
+          @toggle-review-selection="toggleTrustSelection"
+          @filter-changed="updateTrustFilters"
+          @batch-action="applyTrustBatch"
+          @update-open-loop="updateTrustOpenLoop"
+        />
+
         <CollectView
           v-else
           :busy="busy"
@@ -196,12 +213,14 @@ import {
   PanelRight,
   Plus,
   Settings,
+  ShieldCheck,
   SquarePen,
   X,
 } from 'lucide-vue-next'
 import CollectView from './components/CollectView.vue'
 import RecallHome from './components/RecallHome.vue'
 import SpacesView from './components/SpacesView.vue'
+import TrustCenterView from './components/TrustCenterView.vue'
 import type {
   AskResponse,
   CollectPayload,
@@ -221,13 +240,23 @@ import type {
   TopicTurn,
   WorkspaceState,
 } from './types'
+import type {
+  TrustBatchPayload,
+  TrustDiagnostics,
+  TrustOpenLoopPayload,
+  TrustOpenLoopUpdatePayload,
+  TrustReviewDetailPayload,
+  TrustReviewFilters,
+  TrustReviewPayload,
+} from './components/trustCenterTypes'
 
-type ActiveView = 'recall' | 'spaces' | 'collect'
+type ActiveView = 'recall' | 'spaces' | 'trust' | 'collect'
 type ToastKind = 'info' | 'error'
 
 const navItems = [
   { id: 'recall' as const, label: '聊天', icon: markRaw(MessageSquare) },
   { id: 'spaces' as const, label: '知识库', icon: markRaw(BookOpen) },
+  { id: 'trust' as const, label: '信任', icon: markRaw(ShieldCheck) },
   { id: 'collect' as const, label: '收集', icon: markRaw(PenLine) },
 ]
 
@@ -255,6 +284,12 @@ const topicState = ref<TopicState | null>(null)
 const topics = ref<Topic[]>([])
 const collectResults = ref<IngestResponse[]>([])
 const recentBatchSourceIds = ref<string[]>([])
+const trustReview = ref<TrustReviewPayload>(emptyTrustReview())
+const trustReviewDetail = ref<TrustReviewDetailPayload | null>(null)
+const trustOpenLoops = ref<TrustOpenLoopPayload>(emptyTrustOpenLoops())
+const trustDiagnostics = ref<TrustDiagnostics | null>(null)
+const selectedTrustSourceIds = ref<string[]>([])
+const trustFilters = ref<TrustReviewFilters>({})
 const settingsOpen = ref(false)
 const activityOpen = ref(false)
 const toast = ref('')
@@ -310,12 +345,14 @@ const sessionTitle = computed(() => {
     return activeTopic.value?.title || currentRecallQuestion.value || askResult.value?.question || '新话题'
   }
   if (activeView.value === 'spaces') return selectedSpaceName.value
+  if (activeView.value === 'trust') return '信任运营'
   return '收集'
 })
 
 const sessionSubtitle = computed(() => {
   if (activeView.value === 'recall') return busy.value ? busyStage.value || '正在找回' : '找回入口'
   if (activeView.value === 'spaces') return `${spaces.value.length} 个空间`
+  if (activeView.value === 'trust') return `${trustReview.value.summary.ai_inferred} 条 AI 推断`
   return collectResults.value.length ? `${collectResults.value.length} 份材料已进入知识库` : '收集入口'
 })
 
@@ -359,6 +396,59 @@ const pendingSummary = computed(() => {
   return '当前没有待确认建议，可以继续收集或找回。'
 })
 
+function emptyTrustReview(): TrustReviewPayload {
+  return {
+    items: [],
+    filters: {},
+    summary: {
+      total: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      unreviewed: 0,
+      confirmed: 0,
+      rewritten: 0,
+      rejected: 0,
+      deferred: 0,
+      ai_inferred: 0,
+      user_stated: 0,
+      open_loop_items: 0,
+    },
+  }
+}
+
+function emptyTrustOpenLoops(): TrustOpenLoopPayload {
+  return {
+    items: [],
+    summary: {
+      total: 0,
+      by_state: {
+        active: 0,
+        next: 0,
+        resolved: 0,
+        dismissed: 0,
+      },
+      by_risk: {
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+    },
+  }
+}
+
+function trustQueryString(filters: TrustReviewFilters) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === '' || value === null || value === undefined) return
+    params.set(key, String(value))
+  })
+  const query = params.toString()
+  return query ? `?${query}` : ''
+}
+
 onMounted(() => {
   refreshShell()
 })
@@ -367,6 +457,9 @@ function setView(view: ActiveView) {
   activeView.value = view
   if (view === 'spaces' && selectedSpaceId.value !== 'all') {
     loadSpaceDetail(selectedSpaceId.value)
+  }
+  if (view === 'trust') {
+    loadTrustCenter()
   }
 }
 
@@ -391,7 +484,7 @@ function startCollect() {
 
 async function refreshShell() {
   try {
-    await Promise.all([loadWorkspace(), loadConfig(), loadSpaces(), loadAllSources(), loadQuestions(), loadTopics()])
+    await Promise.all([loadWorkspace(), loadConfig(), loadSpaces(), loadAllSources(), loadQuestions(), loadTopics(), loadTrustCenter()])
     if (selectedSpaceId.value !== 'all') await loadSpaceDetail(selectedSpaceId.value)
   } catch (error) {
     showToast(messageFromError(error), 'error')
@@ -424,6 +517,85 @@ async function loadTopics() {
   topics.value = payload.topics
   if (!activeTopic.value && payload.topics.length) {
     await loadTopicDetail(payload.topics[0].id)
+  }
+}
+
+async function loadTrustCenter() {
+  const query = trustQueryString(trustFilters.value)
+  const [review, loops, diagnostics] = await Promise.all([
+    api<TrustReviewPayload>(`/api/trust/review${query}`),
+    api<TrustOpenLoopPayload>('/api/trust/open-loops'),
+    api<TrustDiagnostics>('/api/trust/diagnostics'),
+  ])
+  trustReview.value = review
+  trustOpenLoops.value = loops
+  trustDiagnostics.value = diagnostics
+  const available = new Set(review.items.map((item) => item.source_id))
+  selectedTrustSourceIds.value = selectedTrustSourceIds.value.filter((sourceId) => available.has(sourceId))
+  if (trustReviewDetail.value && !available.has(trustReviewDetail.value.item.source_id)) {
+    trustReviewDetail.value = null
+  }
+  if (!trustReviewDetail.value && review.items[0]) {
+    await selectTrustReview(review.items[0].source_id)
+  } else if (trustReviewDetail.value) {
+    await selectTrustReview(trustReviewDetail.value.item.source_id)
+  }
+}
+
+async function selectTrustReview(sourceId: string) {
+  if (!sourceId) {
+    trustReviewDetail.value = null
+    return
+  }
+  trustReviewDetail.value = await api<TrustReviewDetailPayload>(`/api/trust/review/${encodeURIComponent(sourceId)}`)
+}
+
+function toggleTrustSelection(sourceId: string) {
+  if (!sourceId) return
+  selectedTrustSourceIds.value = selectedTrustSourceIds.value.includes(sourceId)
+    ? selectedTrustSourceIds.value.filter((item) => item !== sourceId)
+    : [...selectedTrustSourceIds.value, sourceId]
+}
+
+async function updateTrustFilters(filters: TrustReviewFilters) {
+  trustFilters.value = {
+    ...filters,
+    has_open_loops: filters.has_open_loops ?? null,
+  }
+  await loadTrustCenter()
+}
+
+async function applyTrustBatch(payload: TrustBatchPayload) {
+  if (!payload.source_ids.length) return
+  busy.value = true
+  try {
+    await api('/api/trust/review/batch', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    selectedTrustSourceIds.value = []
+    await Promise.all([loadTrustCenter(), loadAllSources(), loadWorkspace()])
+    showToast('信任审查已更新。')
+  } catch (error) {
+    showToast(messageFromError(error), 'error')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function updateTrustOpenLoop(loopId: string, payload: TrustOpenLoopUpdatePayload) {
+  busy.value = true
+  try {
+    await api(`/api/trust/open-loops/${encodeURIComponent(loopId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+    await loadTrustCenter()
+    showToast('Open loop 状态已更新。')
+  } catch (error) {
+    showToast(messageFromError(error), 'error')
+  } finally {
+    busy.value = false
   }
 }
 

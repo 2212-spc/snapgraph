@@ -438,7 +438,7 @@ test('App fetches saved questions and passes them into the graph cloud', () => {
 test('App treats visualization as a knowledge-internal view instead of a duplicate nav item', () => {
   const app = read('frontend/src/App.vue')
 
-  assert.match(app, /type ActiveView = 'recall' \| 'spaces' \| 'collect'/)
+  assert.match(app, /type ActiveView = 'recall' \| 'spaces' \| 'trust' \| 'collect'/)
   assert.match(app, /label: '知识库'/)
   assert.doesNotMatch(app, /label: '可视化'/)
   assert.doesNotMatch(app, /activeView === 'visualize'/)
