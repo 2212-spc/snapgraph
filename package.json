@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "scripts": {
     "dev": "vite --config frontend/vite.config.ts --host 127.0.0.1 --port 5173",
     "build": "vite build --config frontend/vite.config.ts"

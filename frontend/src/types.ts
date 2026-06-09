@@ -11,7 +11,16 @@ export type ProviderConfig = {
   provider: string
   model?: string
   has_api_key?: boolean
-  runtime?: { model_used?: string }
+  runtime?: {
+    configured_provider?: string
+    provider_used?: string
+    model_used?: string
+    api_key_env?: string
+    has_api_key?: boolean
+    provider_ready?: boolean
+    fallback_used?: boolean
+    provider_error?: string
+  }
 }
 
 export type GraphSpace = {
@@ -44,6 +53,9 @@ export type Source = {
   graph_space_id: string
   space_name: string
   confidence?: number
+  review_status?: string
+  review_note?: string
+  reviewed_at?: string
   routing_status?: string
   routing_reason?: string
   path?: string
@@ -59,6 +71,9 @@ export type EvidenceCard = {
   open_loops: string[]
   future_recall_questions: string[]
   source_excerpt: string
+  review_status?: string
+  review_note?: string
+  reviewed_at?: string
 }
 
 export type FocusGraph = {

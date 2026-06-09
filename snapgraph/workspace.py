@@ -148,6 +148,9 @@ def initialize_database(workspace: Workspace) -> None:
             )
             """
         )
+        _ensure_column(conn, "cognitive_contexts", "review_status", "TEXT NOT NULL DEFAULT 'unreviewed'")
+        _ensure_column(conn, "cognitive_contexts", "review_note", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "cognitive_contexts", "reviewed_at", "TEXT NOT NULL DEFAULT ''")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS nodes (

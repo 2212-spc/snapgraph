@@ -43,7 +43,7 @@ from .graph_store import (
     update_graph_edge,
     update_graph_theme,
 )
-from .ingest import ingest_source, update_cognitive_context, update_source_title
+from .ingest import ingest_source, review_ai_inference, update_cognitive_context, update_source_title
 from .linting import lint_workspace
 from .llm import MockLLM
 from .llm_providers import provider_metadata, resolve_llm_with_metadata
@@ -268,6 +268,9 @@ def _sources_payload(ws: Workspace, space_id: str | None = None):
                 c.open_loops_json,
                 c.future_recall_questions_json,
                 c.confidence,
+                COALESCE(c.review_status, 'unreviewed'),
+                COALESCE(c.review_note, ''),
+                COALESCE(c.reviewed_at, ''),
                 COALESCE(m.routing_status, ''),
                 COALESCE(m.routing_reason, '')
             FROM sources s
@@ -297,8 +300,11 @@ def _sources_payload(ws: Workspace, space_id: str | None = None):
             "open_loops": _loads_json_list(row[11]),
             "future_recall_questions": _loads_json_list(row[12]),
             "confidence": row[13] if row[13] is not None else 0.0,
-            "routing_status": row[14] or "",
-            "routing_reason": row[15] or "",
+            "review_status": row[14] or "unreviewed",
+            "review_note": row[15] or "",
+            "reviewed_at": row[16] or "",
+            "routing_status": row[17] or "",
+            "routing_reason": row[18] or "",
             "path": ws.relative_to_workspace(page_path),
         })
     return sources
@@ -342,6 +348,25 @@ def api_source_title_update(source_id: str, payload: dict):
     """Update the user-visible title for a captured source."""
     try:
         update_source_title(_workspace(), source_id, str(payload.get("title", "")))
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
+    return {"detail": detail or {}}
+
+
+@app.patch("/api/sources/{source_id}/review")
+def api_source_review_update(source_id: str, payload: dict):
+    """Persist a user review decision for an AI-inferred context."""
+    try:
+        review_ai_inference(
+            _workspace(),
+            source_id,
+            review_status=str(payload.get("review_status", "")),
+            review_note=str(payload.get("review_note", "")),
+            why_saved=payload.get("why_saved"),
+        )
     except KeyError as exc:
         raise HTTPException(404, "Source not found") from exc
     except ValueError as exc:
@@ -873,7 +898,15 @@ def api_ask_stream(payload: dict):
                 "detail": f"{len(retrieval.graph_paths)} 条连接路径",
             },
         )
-        yield _sse("stage", {"id": "write", "label": "生成 AI 回复", "status": "active", "detail": "Qwen 正在组织回答"})
+        yield _sse(
+            "stage",
+            {
+                "id": "write",
+                "label": "生成 AI 回复",
+                "status": "active",
+                "detail": _provider_action_label(provider_metadata(ws).as_dict()),
+            },
+        )
 
         try:
             llm, metadata = resolve_llm_with_metadata(ws)
@@ -1064,6 +1097,15 @@ def api_demo_questions():
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _provider_action_label(metadata: dict) -> str:
+    provider = metadata.get("provider_used") or metadata.get("configured_provider") or "mock"
+    model = metadata.get("model_used") or ""
+    if provider == "mock":
+        return "MockLLM 正在按本地证据组织回答。"
+    label = f"{provider} · {model}" if model else str(provider)
+    return f"{label} 正在组织回答。"
 
 
 def _context_dicts(retrieval) -> list[dict]:

@@ -7,6 +7,7 @@ from pathlib import Path
 INBOX_GRAPH_SPACE_ID = "inbox"
 DEFAULT_GRAPH_SPACE_ID = "default"
 USER_GUIDED_CONTEXT_STATUSES = {"user-stated", "user-guided"}
+CONTEXT_REVIEW_STATUSES = {"unreviewed", "confirmed", "rewritten", "rejected", "deferred"}
 
 
 def is_user_guided_status(status: str) -> bool:
@@ -49,6 +50,9 @@ class CognitiveContext:
     future_recall_questions: list[str]
     importance: str
     confidence: float
+    review_status: str = "unreviewed"
+    review_note: str = ""
+    reviewed_at: str = ""
 
 
 @dataclass(frozen=True)

@@ -11,6 +11,7 @@ from typing import Literal
 from .graph_store import get_related_links, replace_source_graph, upsert_duplicate_edges
 from .llm import LLMProvider, MockLLM
 from .models import (
+    CONTEXT_REVIEW_STATUSES,
     INBOX_GRAPH_SPACE_ID,
     CognitiveContext,
     IngestResult,
@@ -490,8 +491,11 @@ def _save_cognitive_context(
                 open_loops_json,
                 future_recall_questions_json,
                 importance,
-                confidence
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                confidence,
+                review_status,
+                review_note,
+                reviewed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 cognitive_context.source_id,
@@ -505,6 +509,9 @@ def _save_cognitive_context(
                 ),
                 cognitive_context.importance,
                 cognitive_context.confidence,
+                cognitive_context.review_status,
+                cognitive_context.review_note,
+                cognitive_context.reviewed_at,
             ),
         )
 
@@ -553,7 +560,10 @@ def load_cognitive_context(workspace: Workspace, source_id: str) -> CognitiveCon
                 open_loops_json,
                 future_recall_questions_json,
                 importance,
-                confidence
+                confidence,
+                review_status,
+                review_note,
+                reviewed_at
             FROM cognitive_contexts
             WHERE source_id = ?
             """,
@@ -570,6 +580,9 @@ def load_cognitive_context(workspace: Workspace, source_id: str) -> CognitiveCon
         future_recall_questions=json.loads(row[5]),
         importance=row[6],
         confidence=float(row[7]),
+        review_status=row[8] or "unreviewed",
+        review_note=row[9] or "",
+        reviewed_at=row[10] or "",
     )
 
 
@@ -600,6 +613,9 @@ def update_cognitive_context(
         ),
         importance=existing.importance,
         confidence=1.0 if confirm else existing.confidence,
+        review_status="confirmed" if confirm else existing.review_status,
+        review_note=existing.review_note,
+        reviewed_at=datetime.now(timezone.utc).isoformat() if confirm else existing.reviewed_at,
     )
     if not next_context.why_saved:
         raise ValueError("why_saved cannot be empty")
@@ -630,6 +646,77 @@ def update_cognitive_context(
         ],
     )
     return next_context
+
+
+def review_ai_inference(
+    workspace: Workspace,
+    source_id: str,
+    *,
+    review_status: str,
+    review_note: str = "",
+    why_saved: str | None = None,
+) -> CognitiveContext:
+    """Persist a human decision about an AI-inferred cognitive context."""
+    source = load_source(workspace, source_id)
+    existing = load_cognitive_context(workspace, source_id)
+    status = _clean_review_status(review_status)
+    note = _clean_manual_title(review_note)
+    next_why_saved = (why_saved if why_saved is not None else existing.why_saved).strip()
+    next_why_status = existing.why_saved_status
+    next_confidence = existing.confidence
+
+    if status in {"confirmed", "rewritten"}:
+        next_why_status = "user-stated"
+        next_confidence = 1.0
+    if status == "rewritten":
+        if not next_why_saved:
+            raise ValueError("why_saved is required when review_status is rewritten")
+    if not next_why_saved:
+        raise ValueError("why_saved cannot be empty")
+
+    next_context = CognitiveContext(
+        source_id=source_id,
+        why_saved=next_why_saved,
+        why_saved_status=next_why_status,
+        related_project=existing.related_project,
+        open_loops=existing.open_loops,
+        future_recall_questions=existing.future_recall_questions,
+        importance=existing.importance,
+        confidence=next_confidence,
+        review_status=status,
+        review_note=note,
+        reviewed_at=datetime.now(timezone.utc).isoformat(),
+    )
+    _save_cognitive_context(workspace, next_context)
+    replace_source_graph(workspace, source, next_context)
+    page = write_source_page(
+        workspace,
+        source,
+        next_context,
+        _key_details_for_source(workspace, source),
+        get_related_links(workspace, source.id),
+    )
+    append_log_event(
+        workspace,
+        operation="context_review",
+        source_id=source_id,
+        touched_pages=[
+            page.relative_page_path,
+            workspace.relative_to_workspace(workspace.graph_path),
+            workspace.relative_to_workspace(workspace.sqlite_path),
+            workspace.relative_to_workspace(workspace.log_path),
+        ],
+    )
+    return next_context
+
+
+def _clean_review_status(review_status: str) -> str:
+    status = str(review_status or "").strip()
+    if status not in CONTEXT_REVIEW_STATUSES - {"unreviewed"}:
+        raise ValueError(
+            "review_status must be confirmed, rewritten, rejected, or deferred"
+        )
+    return status
 
 
 def _key_details_for_source(workspace: Workspace, source: Source) -> list[str]:

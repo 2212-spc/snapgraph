@@ -247,6 +247,7 @@ const spaceSuggestions = ref<Suggestion[]>([])
 const focusGraph = ref<FocusGraph | null>(null)
 const askResult = ref<AskResponse | null>(null)
 const currentRecallQuestion = ref('')
+const currentRecallSpaceId = ref('all')
 const recallStages = ref<RecallStage[]>([])
 const activeTopic = ref<Topic | null>(null)
 const topicTurns = ref<TopicTurn[]>([])
@@ -260,9 +261,30 @@ const toast = ref('')
 const toastKind = ref<ToastKind>('info')
 
 const providerLabel = computed(() => {
-  const provider = config.value?.provider || 'mock'
+  const provider = config.value?.runtime?.provider_used || config.value?.provider || 'mock'
   const model = config.value?.runtime?.model_used || config.value?.model || ''
   return model ? `${provider} · ${model}` : provider
+})
+
+const providerTruthLabel = computed(() => {
+  const provider = config.value?.runtime?.provider_used || config.value?.provider || 'mock'
+  const model = config.value?.runtime?.model_used || config.value?.model || ''
+  const fallback = config.value?.runtime?.fallback_used ? ' · fallback' : ''
+  if (provider === 'mock') return 'MockLLM · 本地确定性'
+  return model ? `${provider} · ${model}${fallback}` : `${provider}${fallback}`
+})
+
+const providerActionLabel = computed(() => {
+  const provider = config.value?.runtime?.provider_used || config.value?.provider || 'mock'
+  if (provider === 'mock') return 'MockLLM 正在按本地证据组织回答。'
+  return `${providerTruthLabel.value} 正在组织回答。`
+})
+
+const providerFallbackLabel = computed(() => {
+  const runtime = config.value?.runtime
+  if (runtime?.fallback_used) return '模型调用失败时会回退到本地证据回答。'
+  if (runtime?.provider_ready === false) return '当前模型未就绪，SnapGraph 会先保留本地证据。'
+  return '真实模型只在需要生成回答时参与，证据仍来自本地 SnapGraph。'
 })
 
 const runtimeStatusLabel = computed(() => {
@@ -271,7 +293,7 @@ const runtimeStatusLabel = computed(() => {
 
 const runtimeStatusDetail = computed(() => {
   return config.value?.has_api_key
-    ? '真实模型只在需要生成回答时参与，证据仍来自本地 SnapGraph。'
+    ? providerFallbackLabel.value
     : '当前适合本地演示和确定性测试，回答会优先保留证据链。'
 })
 
@@ -351,6 +373,7 @@ function setView(view: ActiveView) {
 function startNewRecall() {
   activeView.value = 'recall'
   currentRecallQuestion.value = ''
+  currentRecallSpaceId.value = 'all'
   askResult.value = null
   focusGraph.value = null
   recallStages.value = []
@@ -442,6 +465,7 @@ async function refreshSelectedGraph() {
 }
 
 async function askFromGraph(question: string) {
+  currentRecallSpaceId.value = selectedSpaceId.value === 'all' ? 'all' : selectedSpaceId.value
   activeView.value = 'recall'
   await runRecall(question)
 }
@@ -451,11 +475,13 @@ async function askRecentBatch(question = '结合刚才上传的这批材料，�
   if (!recentBatchSourceIds.value.length && fallbackIds.length) {
     recentBatchSourceIds.value = fallbackIds
   }
+  currentRecallSpaceId.value = selectedSpaceId.value === 'all' ? 'all' : selectedSpaceId.value
   activeView.value = 'recall'
   await runRecall(question)
 }
 
 async function runRecall(question: string) {
+  currentRecallSpaceId.value = recallSpaceScope()
   busy.value = true
   currentRecallQuestion.value = question
   askResult.value = null
@@ -482,7 +508,7 @@ async function runRecall(question: string) {
     showToast(`本地证据检索失败：${messageFromError(error)}`, 'error')
   }
 
-  busyStage.value = 'Qwen 正在组织回答。'
+  busyStage.value = providerActionLabel.value
   try {
     await streamRecall(question)
   } catch (error) {
@@ -615,10 +641,20 @@ function recallRequestPayload(question: string, save?: boolean) {
   const contextSourceIds = currentContextSourceIds()
   return {
     question,
-    space_id: activeTopic.value?.space_id || selectedSpaceId.value || 'all',
+    space_id: activeTopic.value?.space_id || recallSpaceScope(),
     ...(save === undefined ? {} : { save }),
     ...(contextSourceIds.length ? { context_source_ids: contextSourceIds } : {}),
   }
+}
+
+function recallSpaceScope() {
+  if (currentRecallSpaceId.value && currentRecallSpaceId.value !== 'all') {
+    return currentRecallSpaceId.value
+  }
+  if (selectedSpaceId.value && selectedSpaceId.value !== 'all' && activeView.value === 'spaces') {
+    return selectedSpaceId.value
+  }
+  return 'all'
 }
 
 function currentContextSourceIds() {
