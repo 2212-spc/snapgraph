@@ -220,6 +220,44 @@ def list_open_loops(workspace: Workspace, state: str | None = None) -> dict:
     }
 
 
+def update_open_loop_state(workspace: Workspace, loop_id: str, state: str, note: str = "") -> dict:
+    """Persist lifecycle metadata for a materialized open loop."""
+    clean_loop_id = str(loop_id or "").strip()
+    clean_state = str(state or "").strip()
+    if clean_state not in OPEN_LOOP_STATES:
+        raise ValueError("state must be active, next, resolved, or dismissed")
+    current = next(
+        (item for item in list_open_loops(workspace)["items"] if item["loop_id"] == clean_loop_id),
+        None,
+    )
+    if not current:
+        raise KeyError(clean_loop_id)
+    clean_note = str(note or "").strip()
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO trust_open_loop_states (
+                loop_id,
+                state,
+                note,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                clean_loop_id,
+                clean_state,
+                clean_note,
+                datetime.now(timezone.utc).isoformat(),
+            ],
+        )
+    updated = next(
+        item for item in list_open_loops(workspace)["items"]
+        if item["loop_id"] == clean_loop_id
+    )
+    return {"item": updated, "summary": list_open_loops(workspace)["summary"]}
+
+
 def _clean_source_ids(source_ids: list[str]) -> list[str]:
     seen = set()
     clean = []

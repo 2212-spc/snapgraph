@@ -92,3 +92,58 @@ def test_trust_batch_rewrite_requires_replacement_text(tmp_path: Path, monkeypat
 
     assert response.status_code == 400
     assert "rewrite" in response.json()["detail"].lower()
+
+
+def test_trust_open_loop_list_materializes_source_traceability(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    response = client.get("/api/trust/open-loops")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"]
+    assert payload["summary"]["total"] == len(payload["items"])
+    first = payload["items"][0]
+    assert first["loop_id"]
+    assert first["state"] == "active"
+    assert first["source_ids"]
+    assert first["source_titles"]
+    assert first["risk_level"] in {"critical", "high", "medium", "low"}
+
+
+def test_trust_open_loops_can_be_marked_next(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+    loops = client.get("/api/trust/open-loops").json()["items"]
+    assert loops
+
+    response = client.patch(
+        f"/api/trust/open-loops/{loops[0]['loop_id']}",
+        json={"state": "next", "note": "Work this next."},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()["item"]
+    assert updated["state"] == "next"
+    assert updated["note"] == "Work this next."
+
+
+def test_trust_open_loop_rejects_invalid_state(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+    loop_id = client.get("/api/trust/open-loops").json()["items"][0]["loop_id"]
+
+    response = client.patch(
+        f"/api/trust/open-loops/{loop_id}",
+        json={"state": "blocked", "note": "Not supported."},
+    )
+
+    assert response.status_code == 400
+    assert "state" in response.json()["detail"].lower()

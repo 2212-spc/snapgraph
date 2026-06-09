@@ -70,7 +70,15 @@ from .topics import (
     topic_context_query,
     update_topic,
 )
-from .trust_center import batch_review, get_review_detail, list_review_items, trust_diagnostics, trust_summary
+from .trust_center import (
+    batch_review,
+    get_review_detail,
+    list_open_loops,
+    list_review_items,
+    trust_diagnostics,
+    trust_summary,
+    update_open_loop_state,
+)
 from .wiki import question_pages, source_pages
 from .workspace import Workspace, create_workspace, get_workspace
 
@@ -430,6 +438,26 @@ def api_trust_summary():
 @app.get("/api/trust/diagnostics")
 def api_trust_diagnostics():
     return trust_diagnostics(_workspace())
+
+
+@app.get("/api/trust/open-loops")
+def api_trust_open_loops(state: str = ""):
+    return list_open_loops(_workspace(), state=state or None)
+
+
+@app.patch("/api/trust/open-loops/{loop_id}")
+def api_trust_open_loop_update(loop_id: str, payload: dict):
+    try:
+        return update_open_loop_state(
+            _workspace(),
+            loop_id,
+            state=str(payload.get("state") or ""),
+            note=str(payload.get("note") or ""),
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "Open loop not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/ingest")
