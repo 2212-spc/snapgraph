@@ -110,7 +110,7 @@
               class="cloud-node"
               :class="cloudNodeClasses(item)"
               :style="cloudNodeStyle(item, index)"
-              :aria-pressed="selectedCloudItem?.key === item.key"
+              :aria-pressed="selectedCloudKey === item.key"
               :title="item.label"
               @click="selectCloudNode($event, item)"
               @pointerdown.stop="startCloudDrag($event, item)"
@@ -125,7 +125,7 @@
             </button>
 
             <div
-              v-if="selectedCloudItem && selectedCloudPoint"
+              v-if="selectedCloudKey && selectedCloudItem && selectedCloudPoint"
               class="cloud-focus-label"
               :style="cloudFocusLabelStyle"
             >
@@ -169,24 +169,35 @@
 
           <section
             v-if="selectedQuestionDetail || questionDetailLoading || questionDetailError"
-            class="cloud-history-panel"
+            class="cloud-history-panel cloud-conversation-window"
             :class="{ 'is-loading': questionDetailLoading }"
             aria-live="polite"
           >
             <div class="cloud-history-head">
-              <span>历史问答</span>
+              <div>
+                <span>对话记录</span>
+                <strong>历史问答窗口</strong>
+              </div>
               <button class="text-button" type="button" @click="closeQuestionHistory">关闭</button>
             </div>
 
             <template v-if="selectedQuestionDetail">
-              <article class="cloud-history-question">
-                <span>当初的问题</span>
-                <strong>{{ selectedQuestionDetail.question }}</strong>
-              </article>
-              <article class="cloud-history-answer">
-                <span>当初的回答</span>
-                <p v-for="block in selectedQuestionAnswerBlocks" :key="block">{{ block }}</p>
-              </article>
+              <div class="cloud-chat-thread">
+                <article class="cloud-chat-message is-user">
+                  <span class="cloud-chat-avatar">你</span>
+                  <div class="cloud-chat-bubble">
+                    <small>当初的问题</small>
+                    <p>{{ selectedQuestionDetail.question }}</p>
+                  </div>
+                </article>
+                <article class="cloud-chat-message is-assistant">
+                  <span class="cloud-chat-avatar">S</span>
+                  <div class="cloud-chat-bubble">
+                    <small>当初的回答</small>
+                    <p v-for="block in selectedQuestionAnswerBlocks" :key="block">{{ block }}</p>
+                  </div>
+                </article>
+              </div>
               <div class="cloud-history-actions">
                 <button class="primary-button" type="button" @click="continueFromQuestionHistory">
                   继续从这里追问
@@ -743,11 +754,10 @@ type CloudGraphEdge = {
 }
 
 const CLOUD_DRAG_THRESHOLD = 4
-const CLOUD_DRAG_INFLUENCE_PULL = 0.34
+const CLOUD_DRAG_INFLUENCE_PULL = 0.28
 const CLOUD_SPRING_RESPONSE = 0.25
 const CLOUD_SPRING_DAMPING = 0.6
 const CLOUD_SPRING_SETTLE_MS = Math.round(CLOUD_SPRING_RESPONSE * 1000 + CLOUD_SPRING_DAMPING * 120 + 98)
-const CLOUD_SPRING_REST_DELAY_MS = 16
 const CLOUD_CLICK_SUPPRESSION_MS = CLOUD_SPRING_SETTLE_MS + 780
 
 const props = defineProps<{
@@ -829,8 +839,9 @@ let cloudResizeObserver: ResizeObserver | null = null
 let cloudDragListenersAttached = false
 let pendingCloudDragFrame: CloudDragFrame | null = null
 let cloudDragAnimationFrame = 0
-let cloudReturnStartTimer = 0
-let cloudReturnTimer = 0
+let cloudSpringAnimationFrame = 0
+let cloudSpringStartedAt = 0
+let cloudSpringEntries: [string, CloudDragInfluence][] = []
 let suppressedCloudClickUntil = 0
 const questionDetailCache = new Map<string, SavedQuestionDetail>()
 
@@ -1083,9 +1094,11 @@ const cloudDragInfluenceOffsets = computed<Record<string, CloudDragInfluence>>((
   return cloudRecoilOffsets.value
 })
 const selectedCloudItem = computed(() => {
-  return visibleCloudItems.value.find((item) => item.key === selectedCloudKey.value) || visibleCloudItems.value[0] || null
+  if (!selectedCloudKey.value) return null
+  return visibleCloudItems.value.find((item) => item.key === selectedCloudKey.value) || null
 })
 const selectedCloudPoint = computed(() => {
+  if (!selectedCloudKey.value) return null
   if (!selectedCloudItem.value) return null
   return cloudGraphPoints.value[selectedCloudItem.value.key] || null
 })
@@ -1105,18 +1118,17 @@ function activeCloudDragInfluenceOffsets() {
   if (Math.hypot(deltaX, deltaY) < 1) return {}
 
   const query = normalizeSearchText(graphSearchQuery.value)
-  const next: Record<string, CloudDragInfluence> = {}
-  visibleCloudItems.value.forEach((item, index) => {
-    if (item.key === drag.key) return
+  const entries = visibleCloudItems.value.flatMap((item, index) => {
+    if (item.key === drag.key) return []
     const strength = cloudElasticInfluence(anchor, item, query, anchorIndex, index)
-    if (strength <= 0) return
-    next[item.key] = {
+    if (strength <= 0) return []
+    return [[item.key, {
       x: roundCloudMotion(deltaX * strength * CLOUD_DRAG_INFLUENCE_PULL),
       y: roundCloudMotion(deltaY * strength * CLOUD_DRAG_INFLUENCE_PULL),
       strength,
-    }
+    }] as const]
   })
-  return next
+  return Object.fromEntries(entries.sort(([, left], [, right]) => right.strength - left.strength).slice(0, 6))
 }
 const cloudFocusLabelStyle = computed(() => {
   const point = selectedCloudPoint.value
@@ -1127,31 +1139,36 @@ const cloudFocusLabelStyle = computed(() => {
   }
 })
 const cloudConstellationEdges = computed<CloudGraphEdge[]>(() => {
-  const selected = selectedCloudItem.value
-  const selectedPoint = selected ? cloudGraphPoints.value[selected.key] : null
-  if (!selected || !selectedPoint) return []
+  const activeDrag = activeCloudDrag.value?.active ? activeCloudDrag.value : null
+  const anchor = activeDrag
+    ? visibleCloudItems.value.find((item) => item.key === activeDrag.key) || selectedCloudItem.value
+    : selectedCloudKey.value ? selectedCloudItem.value : null
+  const anchorPoint = anchor ? cloudGraphPoints.value[anchor.key] : null
+  if (!anchor || !anchorPoint) return []
 
   const query = normalizeSearchText(graphSearchQuery.value)
   return visibleCloudItems.value
-    .filter((item) => item.key !== selected.key)
+    .filter((item) => item.key !== anchor.key)
     .map((item) => {
       const point = cloudGraphPoints.value[item.key]
       return {
         item,
         point,
-        score: cloudAffinityScore(selected, item, query),
+        score: cloudAffinityScore(anchor, item, query),
       }
     })
     .filter((entry) => entry.point && entry.score > 0)
     .sort((left, right) => right.score - left.score)
     .slice(0, 7)
     .map(({ item, point }) => ({
-      id: `${selected.key}->${item.key}`,
-      x1: selectedPoint.x,
-      y1: selectedPoint.y,
+      id: `${anchor.key}->${item.key}`,
+      x1: anchorPoint.x,
+      y1: anchorPoint.y,
       x2: point.x,
       y2: point.y,
-      active: isCloudMatch(item) || isCloudMatch(selected) || Boolean(cloudDragInfluenceOffsets.value[item.key]),
+      active: Boolean(activeDrag)
+        ? item.key === activeDrag.key || Boolean(cloudDragInfluenceOffsets.value[item.key])
+        : isCloudMatch(item) || isCloudMatch(anchor),
     }))
 })
 const overviewProjects = computed(() => projectClusters.value.slice(0, 3))
@@ -1349,7 +1366,7 @@ watch(visibleCloudItems, (items) => {
     return
   }
   if (!items.some((item) => item.key === selectedCloudKey.value)) {
-    selectedCloudKey.value = items[0].key
+    selectedCloudKey.value = ''
   }
 }, { immediate: true })
 
@@ -1742,8 +1759,8 @@ function syncCloudOrbitSize() {
   if (!element) return
   const rect = element.getBoundingClientRect()
   cloudOrbitSize.value = {
-    width: Math.max(320, Math.round(rect.width)),
-    height: Math.max(320, Math.round(rect.height)),
+    width: Math.max(320, Math.round(element.clientWidth || rect.width)),
+    height: Math.max(320, Math.round(element.clientHeight || rect.height)),
   }
 }
 
@@ -1753,8 +1770,8 @@ function cloudGraphPoint(item: CloudItem, index: number) {
   const width = cloudOrbitSize.value.width
   const height = cloudOrbitSize.value.height
   return {
-    x: Math.round((base.left / 100) * width + dragOffset.x),
-    y: Math.round((base.top / 100) * height + dragOffset.y),
+    x: roundCloudMotion((base.left / 100) * width + dragOffset.x),
+    y: roundCloudMotion((base.top / 100) * height + dragOffset.y),
   }
 }
 
@@ -1834,13 +1851,13 @@ function cloudElasticInfluence(
   const influenceRadius = Math.max(220, Math.min(cloudOrbitSize.value.width, cloudOrbitSize.value.height) * 0.72)
   const distancePull = Math.max(0, 1 - distance / influenceRadius)
   const affinity = cloudAffinityScore(anchor, candidate, query)
-  const semanticPull = Math.min(0.32, Math.max(0, affinity - 2) / 30)
-  const evidencePull = sharedCloudEvidenceCount(anchor, candidate) > 0 ? 0.14 : 0
-  const sourcePull = anchor.sourceId && anchor.sourceId === candidate.sourceId ? 0.16 : 0
-  const searchPull = query && cloudSearchText(candidate).includes(query) ? 0.12 : 0
-  const kindPull = anchor.kind === candidate.kind ? 0.07 : 0
-  const strength = Math.min(0.58, distancePull * 0.28 + semanticPull + evidencePull + sourcePull + searchPull + kindPull)
-  return strength >= 0.055 ? Number(strength.toFixed(3)) : 0
+  const semanticPull = Math.min(0.22, Math.max(0, affinity - 2) / 32)
+  const evidencePull = sharedCloudEvidenceCount(anchor, candidate) > 0 ? 0.1 : 0
+  const sourcePull = anchor.sourceId && anchor.sourceId === candidate.sourceId ? 0.12 : 0
+  const searchPull = query && cloudSearchText(candidate).includes(query) ? 0.08 : 0
+  const kindPull = anchor.kind === candidate.kind ? 0.04 : 0
+  const strength = Math.min(0.38, distancePull * 0.2 + semanticPull + evidencePull + sourcePull + searchPull + kindPull)
+  return strength >= 0.12 ? Number(strength.toFixed(3)) : 0
 }
 
 function sharedCloudEvidenceCount(left: CloudItem, right: CloudItem) {
@@ -2062,55 +2079,70 @@ function startCloudSpringReturn(key: string, offsets: Record<string, CloudDragIn
   }
   cloudRecoilKey.value = key
   cloudReturnKey.value = key
+  cloudSpringEntries = entries
+  cloudSpringStartedAt = performanceNow()
   cloudDragOffsets.value = Object.fromEntries(
     entries.map(([entryKey, offset]) => [entryKey, { x: offset.x, y: offset.y }]),
   )
   cloudRecoilOffsets.value = Object.fromEntries(entries)
-  cloudReturnStartTimer = window.setTimeout(() => settleCloudSpringReturn(entries), CLOUD_SPRING_REST_DELAY_MS)
-  cloudReturnTimer = window.setTimeout(finishCloudSpringReturn, CLOUD_SPRING_SETTLE_MS)
+  cloudSpringAnimationFrame = window.requestAnimationFrame(stepCloudSpringReturn)
 }
 
-function settleCloudSpringReturn(entries: [string, CloudDragInfluence][]) {
-  cloudReturnStartTimer = 0
-  cloudDragOffsets.value = Object.fromEntries(
-    entries.map(([entryKey]) => [entryKey, { x: 0, y: 0 }]),
-  )
-  cloudRecoilOffsets.value = Object.fromEntries(
-    entries.map(([entryKey, offset]) => [
-      entryKey,
-      {
-        x: 0,
-        y: 0,
-        strength: offset.strength,
-      },
-    ]),
-  )
+function stepCloudSpringReturn(now = performanceNow()) {
+  cloudSpringAnimationFrame = 0
+  if (!cloudSpringEntries.length) {
+    finishCloudSpringReturn()
+    return
+  }
+  const elapsedSeconds = Math.max(0, (now - cloudSpringStartedAt) / 1000)
+  const multiplier = cloudSpringReturnMultiplier(elapsedSeconds)
+  const nextOffsets: Record<string, { x: number; y: number }> = {}
+  const nextRecoil: Record<string, CloudDragInfluence> = {}
+  let maxDistance = 0
+
+  for (const [entryKey, offset] of cloudSpringEntries) {
+    const x = roundCloudMotion(offset.x * multiplier)
+    const y = roundCloudMotion(offset.y * multiplier)
+    maxDistance = Math.max(maxDistance, Math.hypot(x, y))
+    nextOffsets[entryKey] = { x, y }
+    nextRecoil[entryKey] = { x, y, strength: offset.strength }
+  }
+
+  cloudDragOffsets.value = nextOffsets
+  cloudRecoilOffsets.value = nextRecoil
+
+  if (elapsedSeconds >= CLOUD_SPRING_SETTLE_MS / 1000 || maxDistance < 0.35) {
+    finishCloudSpringReturn()
+    return
+  }
+  cloudSpringAnimationFrame = window.requestAnimationFrame(stepCloudSpringReturn)
+}
+
+function cloudSpringReturnMultiplier(elapsedSeconds: number) {
+  const decay = Math.exp(-7.4 * elapsedSeconds)
+  return Number((decay * Math.cos(18 * elapsedSeconds)).toFixed(4))
 }
 
 function finishCloudSpringReturn() {
+  if (cloudSpringAnimationFrame) {
+    window.cancelAnimationFrame(cloudSpringAnimationFrame)
+    cloudSpringAnimationFrame = 0
+  }
+  cloudSpringEntries = []
+  cloudSpringStartedAt = 0
   clearCloudDragOffsets()
   cloudRecoilOffsets.value = {}
   cloudRecoilKey.value = ''
   cloudReturnKey.value = ''
-  if (cloudReturnStartTimer) {
-    window.clearTimeout(cloudReturnStartTimer)
-    cloudReturnStartTimer = 0
-  }
-  if (cloudReturnTimer) {
-    window.clearTimeout(cloudReturnTimer)
-    cloudReturnTimer = 0
-  }
 }
 
 function clearCloudReturn() {
-  if (cloudReturnStartTimer) {
-    window.clearTimeout(cloudReturnStartTimer)
-    cloudReturnStartTimer = 0
+  if (cloudSpringAnimationFrame) {
+    window.cancelAnimationFrame(cloudSpringAnimationFrame)
+    cloudSpringAnimationFrame = 0
   }
-  if (cloudReturnTimer) {
-    window.clearTimeout(cloudReturnTimer)
-    cloudReturnTimer = 0
-  }
+  cloudSpringEntries = []
+  cloudSpringStartedAt = 0
   cloudReturnKey.value = ''
 }
 
@@ -2211,7 +2243,7 @@ function cloudNodeClasses(item: CloudItem) {
     item.tone,
     `cloud-kind-${item.kind}`,
     {
-      selected: selectedCloudItem.value?.key === item.key,
+      selected: selectedCloudKey.value === item.key,
       matched: isCloudMatch(item),
       dimmed: !isCloudMatch(item),
       'is-dragging': draggingCloudKey.value === item.key,
@@ -2225,17 +2257,16 @@ function cloudNodeClasses(item: CloudItem) {
 }
 
 function cloudNodeStyle(item: CloudItem, index: number) {
-  const { left, top } = cloudNodeBasePosition(index)
-  const size = Math.max(18, Math.min(38, 14 + item.weight * 2.3))
+  const size = Math.max(22, Math.min(30, 17 + item.weight * 1.45))
   const influence = cloudInfluenceOffset(item.key)
-  const dragOffset = cloudRenderOffset(item.key)
+  const point = cloudGraphPoint(item, index)
   return {
-    left: `${left}%`,
-    top: `${top}%`,
+    '--cloud-x': `${point.x}px`,
+    '--cloud-y': `${point.y}px`,
     '--cloud-size': `${size}px`,
-    '--cloud-drag-x': `${dragOffset.x}px`,
-    '--cloud-drag-y': `${dragOffset.y}px`,
+    '--cloud-half-size': `${roundCloudMotion(size / 2)}px`,
     '--cloud-link-strength': `${influence.strength}`,
+    '--cloud-linked-scale': `${roundCloudMotion(1.01 + influence.strength * 0.06)}`,
     '--cloud-orbit-delay': `${-0.2 * (index % 9)}s`,
   }
 }

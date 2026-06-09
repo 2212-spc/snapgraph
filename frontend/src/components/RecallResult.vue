@@ -1,10 +1,10 @@
 <template>
   <section class="recall-result">
-    <article class="answer-card">
-      <div class="answer-card-head">
+    <article class="answer-card answer-chat-window">
+      <div class="answer-card-head answer-chat-head">
         <div>
-          <div class="result-kicker">记忆找回</div>
-          <h2>先给结论</h2>
+          <div class="result-kicker">对话</div>
+          <h2>{{ busy ? '正在回答' : '回答' }}</h2>
         </div>
         <div v-if="evidenceSummaryChips.length" class="evidence-summary">
           <span
@@ -21,13 +21,22 @@
         </p>
       </div>
 
-      <div class="answer-question-block">
-        <span class="answer-question-label">你的问题</span>
-        <p class="answer-question">{{ questionText }}</p>
-      </div>
+      <div class="answer-chat-thread">
+        <article class="answer-message is-user">
+          <span class="answer-avatar">你</span>
+          <div class="answer-bubble">
+            <span class="answer-question-label">你的问题</span>
+            <p class="answer-question">{{ questionText }}</p>
+          </div>
+        </article>
 
-      <div class="answer-card-body">
-        <p v-for="block in answerBlocks" :key="block">{{ block }}</p>
+        <article class="answer-message is-assistant">
+          <span class="answer-avatar">S</span>
+          <div class="answer-bubble answer-card-body">
+            <span class="answer-question-label">SnapGraph</span>
+            <p v-for="block in answerBlocks" :key="block">{{ block }}</p>
+          </div>
+        </article>
       </div>
     </article>
 

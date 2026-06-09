@@ -1,7 +1,7 @@
 <template>
   <section class="recall-home" :class="{ 'has-result': showResult }">
     <div class="recall-hero" :class="{ 'is-compact': showResult }">
-      <h1>{{ showResult ? '找回一个过去的判断' : '问问过去的你' }}</h1>
+      <h1>{{ showResult ? displayQuestion || '新对话' : '今天想学什么？' }}</h1>
       <p v-if="showResult" class="hero-copy">{{ heroCopy }}</p>
 
       <div v-if="!showResult" class="starter-grid">
@@ -25,7 +25,7 @@
             <textarea
               v-model="question"
               :disabled="busy"
-              placeholder="找回一个旧判断、证据或保存理由..."
+              placeholder="今天我能帮您什么？"
               rows="1"
               autofocus
             />
@@ -92,17 +92,17 @@ const emit = defineEmits<{
 
 const question = ref('')
 const prompts = [
-  '我之前为什么关注这个问题？',
-  '哪些材料支持我当时的判断？',
-  '找出我保存过的用户原话和证据。',
-  '这个项目还有哪些未闭环问题？',
+  '把这个概念讲给初学者听，再给一个判断例子。',
+  '带我一步一步做这道题，并指出最容易错的地方。',
+  '把这个系统画成 Mermaid 图，并解释每条边代表什么。',
+  '围绕这个知识点考我 3 题，再根据我的答案讲错因。',
 ]
 const showResult = computed(() => Boolean(props.result || props.focusGraph))
 const heroCopy = computed(() => showResult.value
   ? '继续从本地材料、保存理由和图谱路径里追问这个判断。'
-  : '问一个你曾经想过、保存过、但现在记不清来龙去脉的问题。SnapGraph 会从本地材料、保存理由和图谱路径里，重新拼回当时的判断依据。')
+  : '选择一个方向开始，或者直接输入你想理解、求解、画图、练习的问题。')
 const displayQuestion = computed(() => question.value.trim() || props.currentQuestion || props.result?.question || '')
-const statusText = computed(() => props.busy ? props.busyStage || '正在从本地记忆里找回线索。' : '按回车或点击找回。')
+const statusText = computed(() => props.busy ? props.busyStage || '正在回答。' : '按回车或点击发送。')
 
 watch(
   () => props.currentQuestion,
