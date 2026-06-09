@@ -43,7 +43,7 @@ from .graph_store import (
     update_graph_edge,
     update_graph_theme,
 )
-from .ingest import ingest_source, update_cognitive_context, update_source_title
+from .ingest import ingest_source, review_ai_inference, update_cognitive_context, update_source_title
 from .linting import lint_workspace
 from .llm import MockLLM
 from .llm_providers import provider_metadata, resolve_llm_with_metadata
@@ -69,6 +69,15 @@ from .topics import (
     list_topics,
     topic_context_query,
     update_topic,
+)
+from .trust_center import (
+    batch_review,
+    get_review_detail,
+    list_open_loops,
+    list_review_items,
+    trust_diagnostics,
+    trust_summary,
+    update_open_loop_state,
 )
 from .wiki import question_pages, source_pages
 from .workspace import Workspace, create_workspace, get_workspace
@@ -268,6 +277,9 @@ def _sources_payload(ws: Workspace, space_id: str | None = None):
                 c.open_loops_json,
                 c.future_recall_questions_json,
                 c.confidence,
+                COALESCE(c.review_status, 'unreviewed'),
+                COALESCE(c.review_note, ''),
+                COALESCE(c.reviewed_at, ''),
                 COALESCE(m.routing_status, ''),
                 COALESCE(m.routing_reason, '')
             FROM sources s
@@ -297,8 +309,11 @@ def _sources_payload(ws: Workspace, space_id: str | None = None):
             "open_loops": _loads_json_list(row[11]),
             "future_recall_questions": _loads_json_list(row[12]),
             "confidence": row[13] if row[13] is not None else 0.0,
-            "routing_status": row[14] or "",
-            "routing_reason": row[15] or "",
+            "review_status": row[14] or "unreviewed",
+            "review_note": row[15] or "",
+            "reviewed_at": row[16] or "",
+            "routing_status": row[17] or "",
+            "routing_reason": row[18] or "",
             "path": ws.relative_to_workspace(page_path),
         })
     return sources
@@ -348,6 +363,101 @@ def api_source_title_update(source_id: str, payload: dict):
         raise HTTPException(400, str(exc)) from exc
     detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
     return {"detail": detail or {}}
+
+
+@app.patch("/api/sources/{source_id}/review")
+def api_source_review_update(source_id: str, payload: dict):
+    """Persist a user review decision for an AI-inferred context."""
+    try:
+        review_ai_inference(
+            _workspace(),
+            source_id,
+            review_status=str(payload.get("review_status", "")),
+            review_note=str(payload.get("review_note", "")),
+            why_saved=payload.get("why_saved"),
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
+    return {"detail": detail or {}}
+
+
+# 鈹€鈹€ Trust operations 鈹€鈹€
+
+@app.get("/api/trust/review")
+def api_trust_review(
+    status: str = "",
+    risk: str = "",
+    space_id: str = "",
+    q: str = "",
+    inferred: str = "",
+    has_open_loops: bool | None = None,
+):
+    return list_review_items(
+        _workspace(),
+        {
+            "status": status,
+            "risk": risk,
+            "space_id": space_id,
+            "q": q,
+            "inferred": inferred,
+            "has_open_loops": has_open_loops,
+        },
+    )
+
+
+@app.post("/api/trust/review/batch")
+def api_trust_review_batch(payload: dict):
+    try:
+        return batch_review(
+            _workspace(),
+            source_ids=payload.get("source_ids") or [],
+            action=str(payload.get("action") or ""),
+            note=str(payload.get("note") or ""),
+            rewrites=payload.get("rewrites") or {},
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/trust/review/{source_id}")
+def api_trust_review_detail(source_id: str):
+    try:
+        return get_review_detail(_workspace(), source_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+
+
+@app.get("/api/trust/summary")
+def api_trust_summary():
+    return trust_summary(_workspace())
+
+
+@app.get("/api/trust/diagnostics")
+def api_trust_diagnostics():
+    return trust_diagnostics(_workspace())
+
+
+@app.get("/api/trust/open-loops")
+def api_trust_open_loops(state: str = ""):
+    return list_open_loops(_workspace(), state=state or None)
+
+
+@app.patch("/api/trust/open-loops/{loop_id}")
+def api_trust_open_loop_update(loop_id: str, payload: dict):
+    try:
+        return update_open_loop_state(
+            _workspace(),
+            loop_id,
+            state=str(payload.get("state") or ""),
+            note=str(payload.get("note") or ""),
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "Open loop not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/ingest")
@@ -873,7 +983,15 @@ def api_ask_stream(payload: dict):
                 "detail": f"{len(retrieval.graph_paths)} 条连接路径",
             },
         )
-        yield _sse("stage", {"id": "write", "label": "生成 AI 回复", "status": "active", "detail": "Qwen 正在组织回答"})
+        yield _sse(
+            "stage",
+            {
+                "id": "write",
+                "label": "生成 AI 回复",
+                "status": "active",
+                "detail": _provider_action_label(provider_metadata(ws).as_dict()),
+            },
+        )
 
         try:
             llm, metadata = resolve_llm_with_metadata(ws)
@@ -1064,6 +1182,15 @@ def api_demo_questions():
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _provider_action_label(metadata: dict) -> str:
+    provider = metadata.get("provider_used") or metadata.get("configured_provider") or "mock"
+    model = metadata.get("model_used") or ""
+    if provider == "mock":
+        return "MockLLM 正在按本地证据组织回答。"
+    label = f"{provider} · {model}" if model else str(provider)
+    return f"{label} 正在组织回答。"
 
 
 def _context_dicts(retrieval) -> list[dict]:

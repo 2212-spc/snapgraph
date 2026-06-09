@@ -320,6 +320,83 @@ def test_api_can_update_source_title(tmp_path: Path, monkeypatch) -> None:
     assert detail["title"] == "用户确认后的保存名"
 
 
+def test_api_can_review_ai_inferred_context(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# AI Draft\n\nThis source needs review.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    response = client.patch(
+        f"/api/sources/{source_id}/review",
+        json={
+            "review_status": "confirmed",
+            "review_note": "用户确认：这个推断符合当时的保存意图。",
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()["detail"]
+    assert detail["why_saved_status"] == "user-stated"
+    assert detail["review_status"] == "confirmed"
+    assert detail["review_note"] == "用户确认：这个推断符合当时的保存意图。"
+    assert detail["reviewed_at"]
+
+
+def test_api_can_rewrite_and_reject_ai_inferred_context(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Rewrite Me\n\nThis source needs a human reason.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    rewrite = client.patch(
+        f"/api/sources/{source_id}/review",
+        json={
+            "review_status": "rewritten",
+            "why_saved": "我保存它是因为它能提醒我修正 AI 推断。",
+            "review_note": "改写为用户原话。",
+        },
+    )
+
+    assert rewrite.status_code == 200
+    rewritten_detail = rewrite.json()["detail"]
+    assert rewritten_detail["why_saved_status"] == "user-stated"
+    assert rewritten_detail["why_saved"] == "我保存它是因为它能提醒我修正 AI 推断。"
+    assert rewritten_detail["review_status"] == "rewritten"
+
+    reject = client.patch(
+        f"/api/sources/{source_id}/review",
+        json={"review_status": "rejected", "review_note": "这个推断不是我的真实意图。"},
+    )
+
+    assert reject.status_code == 200
+    rejected_detail = reject.json()["detail"]
+    assert rejected_detail["review_status"] == "rejected"
+    assert rejected_detail["review_note"] == "这个推断不是我的真实意图。"
+
+
+def test_api_rejects_invalid_review_status(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Bad Review\n\nInvalid review status.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    response = client.patch(
+        f"/api/sources/{source_id}/review",
+        json={"review_status": "made-up"},
+    )
+
+    assert response.status_code == 400
+
+
 def test_api_ingest_reuses_exact_duplicate_in_same_manual_space(
     tmp_path: Path,
     monkeypatch,

@@ -1,7 +1,7 @@
 <template>
   <section class="recall-home" :class="{ 'has-result': showResult }">
     <div class="recall-hero" :class="{ 'is-compact': showResult }">
-      <h1>{{ showResult ? displayQuestion || '新对话' : '今天想学什么？' }}</h1>
+      <h1>{{ showResult ? displayQuestion || '新对话' : '找回当时为什么在意它' }}</h1>
       <p v-if="showResult" class="hero-copy">{{ heroCopy }}</p>
 
       <div v-if="!showResult" class="starter-grid">
@@ -25,7 +25,7 @@
             <textarea
               v-model="question"
               :disabled="busy"
-              placeholder="今天我能帮您什么？"
+              placeholder="例如：我之前为什么觉得这个方向值得做？"
               rows="1"
               autofocus
             />
@@ -72,6 +72,7 @@
       :topic-state="topicState"
       @pin-source="(sourceId) => $emit('pinSource', sourceId)"
       @ask-open-loop="(question) => $emit('askOpenLoop', question)"
+      @ask-follow-up="askFollowUp"
     />
   </section>
 </template>
@@ -102,15 +103,15 @@ const emit = defineEmits<{
 
 const question = ref('')
 const prompts = [
-  '把这个概念讲给初学者听，再给一个判断例子。',
-  '带我一步一步做这道题，并指出最容易错的地方。',
-  '把这个系统画成 Mermaid 图，并解释每条边代表什么。',
-  '围绕这个知识点考我 3 题，再根据我的答案讲错因。',
+  '我之前为什么觉得 LLM Wiki 是 SnapGraph 的起点？',
+  '刚才上传的这批材料，最值得继续追的判断是什么？',
+  '哪些判断只有 AI 推断，还需要我确认？',
+  '还有哪些 open loop 现在应该继续处理？',
 ]
 const showResult = computed(() => Boolean(props.result || props.focusGraph))
 const heroCopy = computed(() => showResult.value
   ? '继续从本地材料、保存理由和图谱路径里追问这个判断。'
-  : '选择一个方向开始，或者直接输入你想理解、求解、画图、练习的问题。')
+  : '问问过去的你。SnapGraph 会先找回用户原话、保存理由和证据路径，再让 AI 做有边界的整理。')
 const displayQuestion = computed(() => question.value.trim() || props.currentQuestion || props.result?.question || '')
 const statusText = computed(() => props.busy ? props.busyStage || '正在回答。' : '按回车或点击发送。')
 
@@ -131,5 +132,12 @@ function submit() {
 
 function usePrompt(prompt: string) {
   question.value = prompt
+}
+
+function askFollowUp(questionText: string) {
+  const text = questionText.trim()
+  if (!text) return
+  question.value = text
+  emit('recall', text)
 }
 </script>

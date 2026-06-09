@@ -468,6 +468,7 @@ async function startTitleEdit() {
   titleEditOpen.value = true
   await nextTick()
   titleInput.value?.focus()
+  titleInput.value?.select()
 }
 
 function confirmTitleEdit() {

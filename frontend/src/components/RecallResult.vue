@@ -81,6 +81,15 @@
       </div>
     </section>
 
+    <RecallReflectionPanel
+      :question="questionText"
+      :answer="answerText"
+      :contexts="materials"
+      :graph-paths="graphPaths"
+      :next-step="nextText"
+      @ask-follow-up="$emit('askFollowUp', $event)"
+    />
+
     <details v-if="stages.length" class="agent-trace agent-trace-compact" :open="busy" aria-label="AI response progress">
       <summary class="agent-trace-summary">
         <i :class="traceStatus" aria-hidden="true"></i>
@@ -307,6 +316,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import RecallReflectionPanel from './RecallReflectionPanel.vue'
 import type { AskResponse, EvidenceCard, FocusGraph, RecallStage, Topic, TopicState, TopicTurn } from '../types'
 
 type SummaryChip = {
@@ -328,6 +338,7 @@ const props = defineProps<{
 defineEmits<{
   pinSource: [sourceId: string]
   askOpenLoop: [question: string]
+  askFollowUp: [question: string]
 }>()
 
 const previewLimit = 3
