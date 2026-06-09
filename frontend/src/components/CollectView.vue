@@ -24,9 +24,32 @@
       </div>
 
       <div class="receipt-section">
-        <article class="receipt-field">
+        <article class="receipt-field receipt-title-field">
           <span>保存为</span>
-          <strong>{{ receiptTitle }}</strong>
+          <div v-if="titleEditOpen" class="receipt-title-editor">
+            <input
+              ref="titleInput"
+              v-model="titleDraft"
+              maxlength="80"
+              placeholder="给这条记忆起一个更准确的名字"
+              @keydown.enter.prevent="confirmTitleEdit"
+              @keydown.esc.prevent="cancelTitleEdit"
+            />
+            <div class="receipt-title-actions">
+              <button class="paper-button" type="button" :disabled="!titleDraft.trim() || busy" @click="confirmTitleEdit">
+                保存
+              </button>
+              <button class="ghost-button" type="button" :disabled="busy" @click="cancelTitleEdit">
+                取消
+              </button>
+            </div>
+          </div>
+          <div v-else class="receipt-title-display">
+            <strong>{{ receiptTitle }}</strong>
+            <button class="text-button receipt-edit-button" type="button" :disabled="busy" @click="startTitleEdit">
+              更改
+            </button>
+          </div>
         </article>
 
         <article class="receipt-field">
@@ -255,10 +278,13 @@ const routeMode = ref<RouteMode>('auto')
 const spaceId = ref('default')
 const fileInput = ref<HTMLInputElement | null>(null)
 const textInput = ref<HTMLTextAreaElement | null>(null)
+const titleInput = ref<HTMLInputElement | null>(null)
 const lastSubmitted = ref<SubmittedSnapshot | null>(null)
 const hiddenReceiptSourceId = ref('')
 const simulatedStepIndex = ref(0)
 const receiptDetailOpen = ref(false)
+const titleEditOpen = ref(false)
+const titleDraft = ref('')
 
 const STEP_DEFINITIONS = [
   { id: 'extract', label: '提取内容', detail: '先把这份材料转成可以整理的文本' },
@@ -380,6 +406,8 @@ watch(
     if (sourceId && sourceId !== previous) {
       hiddenReceiptSourceId.value = ''
       receiptDetailOpen.value = false
+      titleEditOpen.value = false
+      titleDraft.value = ''
     }
   },
 )

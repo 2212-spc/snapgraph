@@ -4,7 +4,8 @@ from types import SimpleNamespace
 from pathlib import Path
 
 import snapgraph.parsers as parsers
-from snapgraph.ingest import ingest_source, update_cognitive_context
+from snapgraph.ingest import ingest_source, update_cognitive_context, update_source_title
+from snapgraph.models import DEFAULT_GRAPH_SPACE_ID, INBOX_GRAPH_SPACE_ID
 from snapgraph.workspace import Workspace, create_workspace
 
 
@@ -72,6 +73,22 @@ def test_ingest_preserves_user_stated_why_exactly(tmp_path: Path) -> None:
     assert row == (why, "user-stated")
 
 
+def test_freeform_capture_title_uses_saved_reason_not_first_line(tmp_path: Path) -> None:
+    source_path = tmp_path / "capture-123.md"
+    first_line = "这是一段很长的第一句话，过去会被直接截断当成保存名称。"
+    source_path.write_text(
+        f"# {first_line}\n\n{first_line}\n\n第二句话才说明它和记忆回执有关。",
+        encoding="utf-8",
+    )
+    workspace = Workspace(tmp_path)
+    why = "为了验证记忆回执是否能把保存理由和材料内容一起总结。"
+
+    result = ingest_source(workspace, source_path, why=why)
+
+    assert result.source.title != first_line
+    assert "记忆回执" in result.source.title
+
+
 def test_ingest_without_why_is_ai_inferred(tmp_path: Path) -> None:
     source_path = tmp_path / "note.txt"
     source_path.write_text("A deterministic source.", encoding="utf-8")
@@ -112,19 +129,34 @@ def test_ingest_rejects_unsupported_file_type(tmp_path: Path) -> None:
         raise AssertionError("Expected unsupported type to raise ValueError")
 
 
-def test_duplicate_ingest_warns_and_creates_related_edge(tmp_path: Path) -> None:
+def test_duplicate_ingest_reuses_existing_source_in_same_space(tmp_path: Path) -> None:
     source_path = tmp_path / "note.md"
     source_path.write_text("# Test Note\n\nSame content.\n", encoding="utf-8")
     workspace = Workspace(tmp_path)
 
-    first = ingest_source(workspace, source_path)
-    second = ingest_source(workspace, source_path)
+    first = ingest_source(workspace, source_path, space_id=DEFAULT_GRAPH_SPACE_ID)
+    second = ingest_source(workspace, source_path, space_id=DEFAULT_GRAPH_SPACE_ID)
 
+    assert second.deduplicated is True
+    assert second.source.id == first.source.id
     assert second.warnings == [
-        f"duplicate content_hash also seen in {first.source.id}"
+        (
+            "duplicate content_hash already exists in "
+            f"{DEFAULT_GRAPH_SPACE_ID} as {first.source.id}; reused existing source"
+        )
     ]
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        source_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM sources
+            WHERE graph_space_id = ? AND content_hash = ?
+            """,
+            (DEFAULT_GRAPH_SPACE_ID, first.source.content_hash),
+        ).fetchone()[0]
     graph = json.loads(workspace.graph_path.read_text(encoding="utf-8"))
-    assert any(edge["relation"] == "related_to" for edge in graph["edges"])
+    assert source_count == 1
+    assert not any(edge["relation"] == "related_to" for edge in graph["edges"])
 
 
 def test_experimental_image_ingest_uses_mock_placeholder(tmp_path: Path) -> None:
@@ -241,15 +273,40 @@ def test_update_cognitive_context_rewrites_graph_and_page(tmp_path: Path) -> Non
     assert not any(node["type"] == "question" and result.source.id in node["id"] for node in graph["nodes"])
 
 
+def test_update_source_title_rewrites_source_page_index_and_graph(tmp_path: Path) -> None:
+    source_path = tmp_path / "note.md"
+    source_path.write_text("# Old Title\n\nOpen loop: first draft.\n", encoding="utf-8")
+    workspace = Workspace(tmp_path)
+    create_workspace(workspace)
+    result = ingest_source(workspace, source_path)
+
+    updated = update_source_title(workspace, result.source.id, "手动修改后的保存名")
+
+    assert updated.title == "手动修改后的保存名"
+    page_text = result.page.absolute_page_path.read_text(encoding="utf-8")
+    index_text = workspace.index_path.read_text(encoding="utf-8")
+    graph = json.loads(workspace.graph_path.read_text(encoding="utf-8"))
+
+    assert "title: 手动修改后的保存名" in page_text
+    assert "[手动修改后的保存名]" in index_text
+    assert "[Old Title]" not in index_text
+    assert any(
+        node["id"] == f"source_{result.source.id}"
+        and node["label"] == "手动修改后的保存名"
+        for node in graph["nodes"]
+    )
+
+
 def test_update_cognitive_context_preserves_duplicate_edge(tmp_path: Path) -> None:
     source_path = tmp_path / "note.md"
     source_path.write_text("# Test Note\n\nSame content.\n", encoding="utf-8")
     workspace = Workspace(tmp_path)
     create_workspace(workspace)
-    first = ingest_source(workspace, source_path)
-    second = ingest_source(workspace, source_path)
+    first = ingest_source(workspace, source_path, space_id=DEFAULT_GRAPH_SPACE_ID)
+    second = ingest_source(workspace, source_path, space_id=INBOX_GRAPH_SPACE_ID)
 
     before_graph = json.loads(workspace.graph_path.read_text(encoding="utf-8"))
+    assert second.source.id != first.source.id
     assert any(edge["relation"] == "related_to" for edge in before_graph["edges"])
 
     update_cognitive_context(

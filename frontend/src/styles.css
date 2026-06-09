@@ -1095,6 +1095,103 @@ button:not(:disabled):hover {
 
 .evidence-chain {
   border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(245, 242, 234, 0.72);
+  color: var(--muted-foreground);
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.agent-step-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid rgba(42, 38, 34, 0.08);
+  padding: 8px;
+}
+
+.agent-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  border: 1px solid rgba(42, 38, 34, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 254, 253, 0.74);
+  padding: 8px 9px;
+}
+
+.result-toggle-shell {
+  border: 1px solid rgba(42, 38, 34, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 254, 253, 0.72);
+  overflow: hidden;
+}
+
+.result-toggle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+}
+
+.result-toggle-head > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.result-toggle-head .section-kicker {
+  margin-bottom: 6px;
+}
+
+.result-toggle-head h3 {
+  margin: 0;
+}
+
+.result-toggle-head p {
+  margin: 6px 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.result-toggle-shell .evidence-chain,
+.result-toggle-shell .result-panel {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid rgba(42, 38, 34, 0.08);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.toggle-button,
+.inline-toggle-button {
+  white-space: nowrap;
+}
+
+.evidence-grid-stacked {
+  grid-template-columns: 1fr;
+}
+
+.evidence-block-toggle-head {
+  align-items: center;
+}
+
+.evidence-block-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.evidence-block-body {
+  margin-top: 14px;
+}
+
+.evidence-chain {
+  border: 1px solid var(--line);
   border-radius: 16px;
   background: color-mix(in srgb, var(--paper) 96%, transparent);
   box-shadow: var(--shadow-paper);
@@ -2092,10 +2189,8 @@ button:not(:disabled):hover {
   gap: 14px;
 }
 
-.graph-overview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.graph-space-detail .space-detail-head h2 {
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
 }
 
 .graph-guided-actions {

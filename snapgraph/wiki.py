@@ -110,6 +110,7 @@ def add_source_to_index(workspace: Workspace, page: SourcePage) -> None:
     target = markdown_link_target(workspace.index_path, page.absolute_page_path)
     line = f"- [{page.source.title}]({target}) - `{page.source.id}`\n"
     current = workspace.index_path.read_text(encoding="utf-8")
+    current = _remove_source_index_line(current, page.source.id)
     if line in current:
         return
     if SOURCE_MARKER in current:
@@ -117,6 +118,14 @@ def add_source_to_index(workspace: Workspace, page: SourcePage) -> None:
     else:
         updated = current.rstrip() + "\n" + line
     workspace.index_path.write_text(updated, encoding="utf-8")
+
+
+def _remove_source_index_line(index_text: str, source_id: str) -> str:
+    """Remove stale source index rows before inserting the latest title."""
+    marker = f"`{source_id}`"
+    return "".join(
+        line for line in index_text.splitlines(keepends=True) if marker not in line
+    )
 
 
 def render_question_page(
