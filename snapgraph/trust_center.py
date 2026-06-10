@@ -605,17 +605,21 @@ def _source_map_summary(workspace: Workspace, source_id: str) -> dict:
 def _topic_refs_by_source(workspace: Workspace) -> dict[str, list[dict]]:
     refs: dict[str, list[dict]] = {}
     with sqlite3.connect(workspace.sqlite_path) as conn:
+        if not _table_exists(conn, "topics"):
+            return refs
         topic_rows = conn.execute(
             "SELECT id, title, space_id, pinned_source_ids_json FROM topics ORDER BY updated_at DESC"
         ).fetchall()
-        turn_rows = conn.execute(
-            """
-            SELECT tt.topic_id, t.title, t.space_id, tt.evidence_source_ids_json
-            FROM topic_turns tt
-            JOIN topics t ON t.id = tt.topic_id
-            ORDER BY tt.created_at DESC
-            """
-        ).fetchall()
+        turn_rows = []
+        if _table_exists(conn, "topic_turns"):
+            turn_rows = conn.execute(
+                """
+                SELECT tt.topic_id, t.title, t.space_id, tt.evidence_source_ids_json
+                FROM topic_turns tt
+                JOIN topics t ON t.id = tt.topic_id
+                ORDER BY tt.created_at DESC
+                """
+            ).fetchall()
     for topic_id, title, space_id, pinned_json in topic_rows:
         for source_id in _loads_json_list(pinned_json):
             refs.setdefault(source_id, []).append({
@@ -643,6 +647,8 @@ def _topic_open_loops(
     source_by_id: dict[str, _SourceProjection],
 ) -> list[dict]:
     with sqlite3.connect(workspace.sqlite_path) as conn:
+        if not _table_exists(conn, "topics"):
+            return []
         rows = conn.execute(
             "SELECT id, title, pinned_source_ids_json, open_loops_json, updated_at FROM topics ORDER BY updated_at DESC"
         ).fetchall()
@@ -676,6 +682,14 @@ def _topic_open_loops(
                 "topic_title": title,
             })
     return loops
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        [table_name],
+    ).fetchone()
+    return bool(row)
 
 
 def _loop_state_map(workspace: Workspace) -> dict[str, dict]:

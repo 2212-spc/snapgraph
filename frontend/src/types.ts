@@ -164,9 +164,6 @@ export type AskResponse = {
   graph_paths: string[]
   focus_graph: FocusGraph
   recall_projection?: RecallProjection
-  topic?: Topic
-  topic_state?: TopicState
-  turns?: TopicTurn[]
 }
 
 export type RecallStage = {
@@ -202,60 +199,6 @@ export type SavedQuestionDetail = SavedQuestion & {
   answer: string
   answer_heading: string
   markdown: string
-}
-
-export type TopicEvidence = {
-  source_id: string
-  title: string
-  summary: string
-  why_saved: string
-  why_saved_status: string
-  related_project: string
-  open_loops: string[]
-  confidence: number
-}
-
-export type Topic = {
-  id: string
-  title: string
-  summary: string
-  space_id: string
-  pinned_source_ids: string[]
-  open_loops: string[]
-  confirmed_judgments: string[]
-  created_at: string
-  updated_at: string
-}
-
-export type TopicTurn = {
-  id: string
-  topic_id: string
-  question: string
-  answer: string
-  evidence_source_ids: string[]
-  graph_paths: string[]
-  created_at: string
-}
-
-export type TopicState = {
-  topic_id: string
-  title: string
-  summary: string
-  space_id: string
-  pinned_source_ids: string[]
-  evidence_source_ids: string[]
-  open_loops: string[]
-  confirmed_judgments: string[]
-  evidence: TopicEvidence[]
-  user_stated_count: number
-  ai_inferred_count: number
-  turn_count: number
-}
-
-export type TopicPayload = {
-  topic: Topic
-  turns: TopicTurn[]
-  state: TopicState
 }
 
 export type IngestResponse = {
@@ -397,50 +340,4 @@ export type ContextUpdatePayload = {
   related_project: string
   open_loops: string[]
   confirm: boolean
-}
-
-export type SyntheticEdge = {
-  id: string
-  source: string
-  target: string
-  relation: string
-  confidence: number
-  reason: string
-}
-
-export type SourceMapEntry = {
-  node: GraphNode
-  source_detail: {
-    id: string
-    title: string
-    summary: string
-    why_saved: string
-    why_saved_status: string
-    confidence: number
-    related_project: string
-    open_loops: string[]
-    space_name: string
-  }
-  thought_count: number
-  task_count: number
-  thought_label_snippet: string
-  project_name: string | null
-}
-
-export type SourceMapPayload = {
-  space_id: string
-  sources: SourceMapEntry[]
-  synthetic_edges: SyntheticEdge[]
-  insights?: GraphInsights
-}
-
-export type PathResult = {
-  path_nodes: GraphNode[]
-  path_edges: GraphEdge[]
-  path_description: string
-}
-
-export type SubgraphPayload = {
-  nodes: GraphNode[]
-  edges: GraphEdge[]
 }

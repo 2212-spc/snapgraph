@@ -2,7 +2,7 @@
   <section class="space-detail graph-space-detail" v-if="space">
     <header class="space-detail-head">
       <div>
-        <p class="eyebrow">{{ surfaceMode === 'source-map' ? '全局源地图' : surfaceMode === 'overview' ? '知识库 / 记忆云' : '知识库 / 高级审计' }}</p>
+        <p class="eyebrow">{{ surfaceMode === 'overview' ? '知识库 / 记忆云' : '知识库 / 高级审计' }}</p>
         <h2>{{ spaceDisplayName }}</h2>
         <p>{{ spaceDescription }}</p>
       </div>
@@ -12,14 +12,6 @@
         </div>
 
         <div class="graph-mode-switch" role="tablist" aria-label="知识库视图切换">
-          <button
-            :class="{ active: surfaceMode === 'source-map' }"
-            role="tab"
-            :aria-selected="surfaceMode === 'source-map'"
-            @click="surfaceMode = 'source-map'"
-          >
-            全局地图
-          </button>
           <button
             :class="{ active: surfaceMode === 'overview' }"
             role="tab"
@@ -39,31 +31,6 @@
         </div>
       </div>
     </header>
-
-    <section v-if="surfaceMode === 'source-map'" class="graph-source-map-mode">
-      <GlobalSourceMap
-        v-if="!drillDownState"
-        :space="space"
-        :sources="sourceMapEntries"
-        :synthetic-edges="sourceMapSyntheticEdges"
-        :expanded-ids="expandedSourceIds"
-        @expand-source="handleExpandSource"
-        @trace-thread="handleTraceThread"
-      />
-      <SourceDrillDown
-        v-else
-        :drill-mode="drillDownState.mode"
-        :expanded-source="drillDownState.expandedSource"
-        :subgraph-nodes="drillDownState.subgraphNodes"
-        :subgraph-edges="drillDownState.subgraphEdges"
-        :thread-nodes="drillDownState.threadNodes"
-        :thread-edges="drillDownState.threadEdges"
-        :path-description="drillDownState.pathDescription"
-        @back="drillDownState = null"
-        @ask-here="(q) => $emit('askFromGraph', q)"
-        @open-source="(sid) => openSourceDetail(sid)"
-      />
-    </section>
 
     <section v-if="surfaceMode === 'overview'" class="graph-overview-mode">
       <div class="graph-guided-actions" aria-label="这个空间的下一步">
@@ -644,12 +611,10 @@ import {
   Map as MapIcon,
   Maximize2,
   Minimize2,
-  Network,
   PencilLine,
   Route,
   Scissors,
   Search,
-  X,
 } from 'lucide-vue-next'
 import MemoryCloudConstellation from './MemoryCloudConstellation.vue'
 import type { CloudEvidence, CloudItem } from './memoryCloudTypes'
@@ -673,17 +638,10 @@ import type {
   SavedQuestion,
   SavedQuestionDetail,
   Source,
-  SourceMapEntry,
-  SourceMapPayload,
-  SubgraphPayload,
   Suggestion,
-  SyntheticEdge,
-  PathResult,
 } from '../types'
-import GlobalSourceMap from './GlobalSourceMap.vue'
-import SourceDrillDown from './SourceDrillDown.vue'
 
-type GraphSurfaceMode = 'source-map' | 'overview' | 'workbench'
+type GraphSurfaceMode = 'overview' | 'workbench'
 type OverviewOpenItem = {
   key: string
   title: string
@@ -727,7 +685,7 @@ const interactionModes = [
 
 const stageContainer = ref<HTMLDivElement | null>(null)
 
-const surfaceMode = ref<GraphSurfaceMode>('source-map')
+const surfaceMode = ref<GraphSurfaceMode>('overview')
 const viewMode = ref<GraphViewMode>('memory')
 const interactionMode = ref<GraphInteractionMode>('arrange')
 const layoutPositions = ref<GraphLayoutPosition[]>([])
@@ -777,21 +735,6 @@ const editSpaceName = ref('')
 const editSpacePurpose = ref('')
 const editSpaceDescription = ref('')
 const editSpaceColor = ref('#b0501e')
-
-// Source-map state
-type DrillDownState = {
-  mode: 'expand' | 'thread'
-  expandedSource: SourceMapEntry | null
-  subgraphNodes: GraphNode[]
-  subgraphEdges: GraphEdge[]
-  threadNodes: GraphNode[]
-  threadEdges: GraphEdge[]
-  pathDescription: string
-} | null
-const sourceMapEntries = ref<SourceMapEntry[]>([])
-const sourceMapSyntheticEdges = ref<SyntheticEdge[]>([])
-const expandedSourceIds = ref<string[]>([])
-const drillDownState = ref<DrillDownState | null>(null)
 
 const graphSpaceId = computed(() => props.space?.id || 'all')
 const spaceDisplayName = computed(() => props.space ? displaySpaceName(props.space) : '记忆空间')
@@ -1237,7 +1180,7 @@ watch(() => props.space, (space) => {
   editSpacePurpose.value = space?.purpose || ''
   editSpaceDescription.value = space?.description || ''
   editSpaceColor.value = space?.color || '#b0501e'
-  surfaceMode.value = 'source-map'
+  surfaceMode.value = 'overview'
   selectedSource.value = null
   selectedNodeIds.value = []
   selectedEdgeId.value = ''
@@ -1246,13 +1189,10 @@ watch(() => props.space, (space) => {
   graphSearchQuery.value = ''
   graphExpanded.value = false
   graphFocusNodeId.value = ''
-  drillDownState.value = null
-  expandedSourceIds.value = []
   resetGraphView()
   if (space) {
     loadLayout()
     loadThemes()
-    loadSourceMap()
   }
 }, { immediate: true })
 
@@ -1320,77 +1260,6 @@ async function loadThemes() {
   try {
     const payload = await api<{ themes: GraphTheme[] }>(`/api/graph/themes?space_id=${encodeURIComponent(props.space.id)}`)
     themes.value = payload.themes || []
-  } catch (error) {
-    localError.value = messageFromError(error)
-  }
-}
-
-async function loadSourceMap() {
-  if (!props.space) return
-  try {
-    const payload = await api<SourceMapPayload>(
-      `/api/spaces/${encodeURIComponent(props.space.id)}/source-map`
-    )
-    sourceMapEntries.value = payload.sources
-    sourceMapSyntheticEdges.value = payload.synthetic_edges
-  } catch (error) {
-    localError.value = messageFromError(error)
-  }
-}
-
-async function handleExpandSource(nodeId: string) {
-  const actualId = nodeId.startsWith('source_') ? nodeId.slice('source_'.length) : nodeId
-  try {
-    const focusGraph = await api<SubgraphPayload>(
-      `/api/spaces/${encodeURIComponent(props.space?.id || 'all')}/sources/${encodeURIComponent(actualId)}/expand`
-    )
-    const source = sourceMapEntries.value.find((s) => s.node.id === nodeId)
-    drillDownState.value = {
-      mode: 'expand',
-      expandedSource: source || null,
-      subgraphNodes: focusGraph.nodes || [],
-      subgraphEdges: focusGraph.edges || [],
-      threadNodes: [],
-      threadEdges: [],
-      pathDescription: '',
-    }
-    if (!expandedSourceIds.value.includes(nodeId)) {
-      expandedSourceIds.value.push(nodeId)
-    }
-  } catch (error) {
-    localError.value = messageFromError(error)
-  }
-}
-
-async function handleTraceThread(sourceIds: string[]) {
-  const actualIds = sourceIds.map((id) => id.startsWith('source_') ? id.slice('source_'.length) : id)
-  try {
-    const result = await api<PathResult>('/api/graph/path', {
-      method: 'POST',
-      body: JSON.stringify({
-        source_ids: actualIds,
-        space_id: props.space?.id || 'all',
-      }),
-    })
-    drillDownState.value = {
-      mode: 'thread',
-      expandedSource: null,
-      subgraphNodes: [],
-      subgraphEdges: [],
-      threadNodes: result.path_nodes,
-      threadEdges: result.path_edges,
-      pathDescription: result.path_description,
-    }
-  } catch (error) {
-    localError.value = messageFromError(error)
-  }
-}
-
-async function openSourceDetail(sourceId: string) {
-  try {
-    const payload = await api<{ markdown: string }>(`/api/sources/${encodeURIComponent(sourceId)}`)
-    sourceDetail.value = { markdown: payload.markdown }
-    sourceDetailOpen.value = true
   } catch (error) {
     localError.value = messageFromError(error)
   }

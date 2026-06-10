@@ -300,36 +300,6 @@ def initialize_database(workspace: Workspace) -> None:
             )
             """
         )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS topics (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                summary TEXT NOT NULL DEFAULT '',
-                space_id TEXT NOT NULL DEFAULT 'all',
-                pinned_source_ids_json TEXT NOT NULL DEFAULT '[]',
-                open_loops_json TEXT NOT NULL DEFAULT '[]',
-                confirmed_judgments_json TEXT NOT NULL DEFAULT '[]',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        _ensure_column(conn, "topics", "confirmed_judgments_json", "TEXT NOT NULL DEFAULT '[]'")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS topic_turns (
-                id TEXT PRIMARY KEY,
-                topic_id TEXT NOT NULL,
-                question TEXT NOT NULL,
-                answer TEXT NOT NULL,
-                evidence_source_ids_json TEXT NOT NULL DEFAULT '[]',
-                graph_paths_json TEXT NOT NULL DEFAULT '[]',
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(topic_id) REFERENCES topics(id)
-            )
-            """
-        )
         _seed_graph_spaces(conn)
         _backfill_materials(conn)
         _ensure_source_content_indexes(conn)
@@ -362,7 +332,6 @@ def _required_directories(workspace: Workspace) -> list[Path]:
         "thoughts",
         "tasks",
         "questions",
-        "topics",
     ]
     return (
         [

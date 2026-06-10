@@ -28,7 +28,6 @@ from .config import (
 )
 from .demo_data import load_demo_dataset, DEMO_QUESTIONS
 from .focus import focus_graph_for_payload, focus_graph_from_retrieval
-from .source_map import expand_source, find_path_between_sources, source_map_graph
 from .graph_store import (
     create_graph_theme,
     create_manual_edge,
@@ -61,15 +60,6 @@ from .spaces import (
     move_source_to_space,
     reject_suggestion,
     update_graph_space,
-)
-from .topics import (
-    add_topic_turn,
-    create_topic,
-    get_topic,
-    get_topic_payload,
-    list_topics,
-    topic_context_query,
-    update_topic,
 )
 from .trust_center import (
     batch_review,
@@ -192,22 +182,6 @@ def api_space_graph(space_id: str):
 @app.get("/api/spaces/{space_id}/sources")
 def api_space_sources(space_id: str):
     return _sources_payload(_workspace(), space_id)
-
-
-@app.get("/api/spaces/{space_id}/source-map")
-def api_space_source_map(space_id: str):
-    """Return source-level graph: only source nodes + synthetic cross-source edges."""
-    ws = _workspace()
-    result = source_map_graph(ws, space_id)
-    result["insights"] = graph_insights(ws)
-    return result
-
-
-@app.get("/api/spaces/{space_id}/sources/{source_id}/expand")
-def api_source_expand(space_id: str, source_id: str):
-    """Return the local subgraph around a single source."""
-    ws = _workspace()
-    return expand_source(ws, source_id, space_id)
 
 
 @app.post("/api/suggestions/route")
@@ -670,187 +644,6 @@ def api_graph_theme_update(theme_id: str, payload: dict):
         raise HTTPException(400, str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(404, "Theme not found") from exc
-
-
-@app.post("/api/graph/path")
-def api_graph_path(payload: dict):
-    """Find the shortest path between two or more source nodes."""
-    source_ids_raw = payload.get("source_ids", [])
-    source_ids = [str(sid).strip() for sid in source_ids_raw]
-    space_id = str(payload.get("space_id") or "all")
-    if len(source_ids) < 2:
-        raise HTTPException(400, "At least two source_ids are required")
-    try:
-        return find_path_between_sources(_workspace(), source_ids, space_id)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-
-# ── Topics ──
-
-@app.post("/api/topics")
-def api_topics_create(payload: dict):
-    ws = _workspace()
-    return create_topic(
-        ws,
-        title=payload.get("title"),
-        initial_question=payload.get("initial_question"),
-        space_id=payload.get("space_id"),
-    )
-
-
-@app.get("/api/topics")
-def api_topics_list():
-    return {"topics": list_topics(_workspace())}
-
-
-@app.get("/api/topics/{topic_id}")
-def api_topic_detail(topic_id: str):
-    try:
-        return get_topic_payload(_workspace(), topic_id)
-    except KeyError as exc:
-        raise HTTPException(404, "Topic not found") from exc
-
-
-@app.patch("/api/topics/{topic_id}")
-def api_topic_update(topic_id: str, payload: dict):
-    try:
-        return update_topic(_workspace(), topic_id, payload)
-    except KeyError as exc:
-        raise HTTPException(404, "Topic not found") from exc
-
-
-@app.post("/api/topics/{topic_id}/ask/stream")
-def api_topic_ask_stream(topic_id: str, payload: dict):
-    question = payload.get("question", "").strip()
-    save = payload.get("save", False)
-    if not question:
-        raise HTTPException(400, "Question is required")
-
-    ws = _workspace()
-    try:
-        topic = get_topic(ws, topic_id)
-    except KeyError as exc:
-        raise HTTPException(404, "Topic not found") from exc
-
-    requested_context_source_ids = _payload_context_source_ids(payload)
-    context_source_ids = _merge_unique(topic.pinned_source_ids, requested_context_source_ids)
-    space_id = str(payload.get("space_id") or topic.space_id or "all")
-    retrieval_query = topic_context_query(topic, question)
-
-    def generate():
-        retrieval = retrieve_for_question(
-            ws,
-            retrieval_query,
-            space_id=space_id,
-            context_source_ids=context_source_ids,
-        )
-        focus_graph = focus_graph_from_retrieval(ws, retrieval, space_id=space_id)
-        yield _sse(
-            "stage",
-            {
-                "id": "evidence",
-                "label": "找本地证据",
-                "status": "done",
-                "detail": f"找到 {len(retrieval.contexts)} 条相关材料",
-            },
-        )
-        yield _sse(
-            "focus",
-            {
-                "contexts": _contexts_payload(ws, retrieval),
-                "graph_paths": retrieval.graph_paths,
-                "diagnostics": asdict(retrieval.diagnostics),
-                "focus_graph": focus_graph,
-            },
-        )
-        yield _sse(
-            "stage",
-            {
-                "id": "read",
-                "label": "读用户原话",
-                "status": "done",
-                "detail": f"{retrieval.diagnostics.user_stated_contexts} 条 user-stated",
-            },
-        )
-        yield _sse(
-            "stage",
-            {
-                "id": "connect",
-                "label": "检查图谱连接",
-                "status": "done",
-                "detail": f"{len(retrieval.graph_paths)} 条连接路径",
-            },
-        )
-        yield _sse(
-            "stage",
-            {
-                "id": "write",
-                "label": "生成 AI 回复",
-                "status": "active",
-                "detail": "围绕当前话题状态组织回答",
-            },
-        )
-        metadata_dict = provider_metadata(ws, provider_used="none").as_dict()
-        try:
-            if retrieval.contexts:
-                llm, metadata = resolve_llm_with_metadata(ws)
-                metadata_dict = metadata.as_dict()
-                result = answer_question(
-                    ws,
-                    question,
-                    llm=llm,
-                    space_id=space_id,
-                    retrieval=retrieval,
-                )
-            else:
-                result = answer_question(
-                    ws,
-                    question,
-                    llm=None,
-                    space_id=space_id,
-                    retrieval=retrieval,
-                )
-        except Exception as exc:
-            metadata_dict = provider_metadata(
-                ws,
-                provider_used=metadata_dict.get("provider_used", "none"),
-                fallback_used=True,
-                provider_error=str(exc),
-            ).as_dict()
-            result = answer_question(
-                ws,
-                question,
-                llm=None,
-                space_id=space_id,
-                retrieval=retrieval,
-            )
-
-        topic_payload = add_topic_turn(ws, topic_id, result)
-        response = _ask_response_payload(ws, result, metadata_dict, space_id)
-        if save:
-            page = save_answer(ws, result)
-            response["saved_page"] = page.relative_page_path
-        response["topic"] = topic_payload["topic"]
-        response["topic_state"] = topic_payload["state"]
-        response["turns"] = topic_payload["turns"]
-        yield _sse("topic", topic_payload)
-        yield _sse(
-            "stage",
-            {
-                "id": "write",
-                "label": "生成 AI 回复",
-                "status": "done",
-                "detail": "回答已写入话题",
-            },
-        )
-        yield _sse("final", response)
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 # ── Focus graph ──
@@ -1330,18 +1123,6 @@ def _loads_json_list(value: str | None) -> list[str]:
     if not isinstance(loaded, list):
         return []
     return [str(item) for item in loaded]
-
-
-def _merge_unique(*groups: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for group in groups:
-        for item in group:
-            cleaned = str(item).strip()
-            if cleaned and cleaned not in seen:
-                seen.add(cleaned)
-                result.append(cleaned)
-    return result
 
 
 def _context_confidence_by_source(workspace: Workspace) -> dict[str, float]:

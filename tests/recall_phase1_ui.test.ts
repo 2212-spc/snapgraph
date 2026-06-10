@@ -56,7 +56,7 @@ test('RecallResult contains phase 1.5 answer cleanup, compact summary, and local
   assert.match(file, /source-link-button/)
   assert.match(file, /展开/)
   assert.match(file, /source-inline-detail/)
-  assert.match(file, /查看全部材料/)
+  assert.match(file, /展开更多材料/)
 })
 
 test('RecallResult adds a design-thinking reflection panel for judgment validation', () => {
@@ -150,7 +150,7 @@ test('App preserves recent upload batch ids and scopes recall requests to the cu
   assert.match(file, /@ask-batch="askRecentBatch"/)
   assert.match(file, /currentRecallSpaceId/)
   assert.match(file, /function recallSpaceScope\(\)/)
-  assert.match(file, /space_id: activeTopic\.value\?\.space_id \|\| recallSpaceScope\(\)/)
+  assert.match(file, /space_id: recallSpaceScope\(\)/)
   assert.doesNotMatch(file, /space_id: 'all'/)
   assert.match(file, /\/api\/focus[\s\S]*context_source_ids/)
   assert.match(file, /\/api\/ask\/stream[\s\S]*context_source_ids/)

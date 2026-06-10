@@ -65,4 +65,7 @@ test('Trust Center components expose review operations, evidence, open loops, an
   assert.match(styles, /\.trust-batch-bar/)
   assert.match(styles, /\.trust-open-loop-panel/)
   assert.match(styles, /\.trust-diagnostics-panel/)
+  assert.match(styles, /\.trust-filter-row\s*{[\s\S]*grid-template-columns: repeat\(auto-fit, minmax\(140px, 1fr\)\)/)
+  assert.match(styles, /\.trust-filter-row input\s*{[\s\S]*grid-column: 1 \/ -1/)
+  assert.match(styles, /\.trust-filter-row \.ghost-button\s*{[\s\S]*white-space: nowrap/)
 })

@@ -50,6 +50,9 @@ test('GraphSpaceView adds overview mode and preserves workbench mode', () => {
   assert.match(file, /记忆云/)
   assert.match(file, /知识库视图切换/)
   assert.match(file, /高级审计/)
+  assert.doesNotMatch(file, /全局地图/)
+  assert.doesNotMatch(file, /全局源地图/)
+  assert.doesNotMatch(file, /GlobalSourceMap/)
   assert.match(file, /const surfaceMode = ref<GraphSurfaceMode>\('overview'\)/)
   assert.match(file, /graphHeaderStats/)
   assert.match(file, /graph-guided-actions/)
@@ -402,10 +405,11 @@ test('styles keep the graph overview header compact so the nebula reaches the fi
   const styles = read('frontend/src/styles.css')
 
   assert.match(styles, /\.graph-space-detail \.space-detail-head\s*{[\s\S]*padding-bottom: 12px/)
+  assert.match(styles, /\.graph-space-detail \.space-detail-head\s*{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/)
   assert.match(styles, /\.graph-space-detail \.space-detail-head h2\s*{[\s\S]*font-size: clamp\(1\.25rem, 2vw, 1\.65rem\)/)
   assert.match(styles, /\.graph-space-detail \.space-detail-head p\s*{[\s\S]*-webkit-line-clamp: 2/)
-  assert.match(styles, /\.graph-space-detail \.space-detail-topbar\s*{[\s\S]*min-width: max-content/)
-  assert.match(styles, /\.graph-space-detail \.graph-space-stats\s*{[\s\S]*flex-wrap: nowrap/)
+  assert.match(styles, /\.graph-space-detail \.space-detail-topbar\s*{[\s\S]*min-width: 0/)
+  assert.match(styles, /\.graph-space-detail \.graph-space-stats\s*{[\s\S]*flex-wrap: wrap/)
   assert.match(styles, /\.graph-space-detail \.graph-stat-chip\s*{[\s\S]*white-space: nowrap/)
   assert.match(styles, /\.memory-cloud-head p\s*{[\s\S]*-webkit-line-clamp: 2/)
   assert.match(styles, /\.memory-cloud-console\s*{[\s\S]*padding: 14px/)
@@ -420,6 +424,19 @@ test('styles keep guided actions compact until phone width so the nebula stays v
 
   assert.doesNotMatch(tabletSection, /\.graph-guided-actions\s*{[\s\S]*grid-template-columns: 1fr/)
   assert.match(phoneSection, /\.graph-guided-actions\s*{[\s\S]*grid-template-columns: 1fr/)
+})
+
+test('styles keep the advanced audit workbench inside the StudyAgent content column', () => {
+  const styles = read('frontend/src/styles.css')
+
+  assert.match(styles, /\.graph-space-detail\s*{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/)
+  assert.match(styles, /\.graph-space-detail > \*\s*{[\s\S]*min-width: 0/)
+  assert.match(styles, /\.graph-toolbar\s*{[\s\S]*width: 100%/)
+  assert.match(styles, /\.graph-toolbar\s*{[\s\S]*max-width: 100%/)
+  assert.match(styles, /\.graph-toolbar-group\s*{[\s\S]*min-width: 0/)
+  assert.match(styles, /\.workbench-grid\s*{[\s\S]*grid-template-columns: minmax\(180px, 0\.78fr\) minmax\(320px, 1\.65fr\) minmax\(220px, 0\.95fr\)/)
+  assert.match(styles, /\.workbench-grid\s*{[\s\S]*max-width: 100%/)
+  assert.doesNotMatch(styles, /grid-template-columns: minmax\(220px, 0\.82fr\) minmax\(420px, 1\.72fr\) minmax\(280px, 1fr\)/)
 })
 
 test('App fetches saved questions and passes them into the graph cloud', () => {
