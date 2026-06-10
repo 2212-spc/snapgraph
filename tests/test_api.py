@@ -80,7 +80,8 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
     )
 
     assert response.status_code == 200
-    text = response.json()["text"]
+    payload = response.json()
+    text = payload["text"]
     for heading in [
         "## 结论",
         "## 找回的原话",
@@ -93,6 +94,14 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
     ]:
         assert heading in text
     assert text.index("## 结论") < text.index("## 找回的原话")
+
+
+    projection = payload["recall_projection"]
+    assert projection["judgment"]["summary"]
+    assert projection["evidence_ladder"]
+    assert projection["trust_debt"]["level"] in {"low", "medium", "high"}
+    assert projection["actions"]
+    assert projection["write_back_preview"]["source_ids"]
 
 
 def test_api_ask_accepts_current_batch_context_source_ids(tmp_path: Path, monkeypatch) -> None:
@@ -183,6 +192,9 @@ def test_api_ask_stream_emits_agent_stages_and_final_answer(tmp_path: Path, monk
     assert '"id": "write"' in body
     assert "event: final" in body
     assert "## AI 探索回应" in body
+
+
+    assert '"recall_projection"' in body
 
 
 def test_api_reports_provider_metadata(tmp_path: Path, monkeypatch) -> None:
