@@ -97,6 +97,49 @@ test('RecallResult adds a design-thinking reflection panel for judgment validati
   assert.match(styles, /\.reflection-validation/)
 })
 
+test('RecallResult 2.0 renders an evidence-first recovery desk without a new module', () => {
+  const result = read('frontend/src/components/RecallResult.vue')
+  const types = read('frontend/src/types.ts')
+  const styles = read('frontend/src/styles.css')
+  const judgment = read('frontend/src/components/RecallJudgmentBrief.vue')
+  const ladder = read('frontend/src/components/RecallEvidenceLadder.vue')
+  const debt = read('frontend/src/components/RecallTrustDebtPanel.vue')
+  const actions = read('frontend/src/components/RecallActionRail.vue')
+  const writeback = read('frontend/src/components/RecallWriteBackPreview.vue')
+
+  assert.match(types, /export type RecallProjection/)
+  assert.match(types, /recall_projection\?: RecallProjection/)
+  assert.match(types, /type RecallEvidenceKind = 'user_anchor' \| 'source' \| 'ai_inference' \| 'graph_path'/)
+
+  assert.match(result, /import RecallJudgmentBrief/)
+  assert.match(result, /import RecallEvidenceLadder/)
+  assert.match(result, /import RecallTrustDebtPanel/)
+  assert.match(result, /import RecallActionRail/)
+  assert.match(result, /import RecallWriteBackPreview/)
+  assert.match(result, /const recallProjection = computed/)
+  assert.match(result, /class="recall-result-desk"/)
+  assert.match(result, /@ask-follow-up="\$emit\('askFollowUp', \$event\)"/)
+
+  assert.match(judgment, /recall-judgment-brief/)
+  assert.match(judgment, /confidence_label/)
+  assert.match(ladder, /recall-evidence-ladder/)
+  assert.match(ladder, /user_anchor/)
+  assert.match(ladder, /ai_inference/)
+  assert.match(debt, /recall-trust-debt-panel/)
+  assert.match(debt, /trust-debt-level/)
+  assert.match(actions, /recall-action-rail/)
+  assert.match(actions, /emit\('askFollowUp'/)
+  assert.match(writeback, /recall-writeback-preview/)
+  assert.match(writeback, /source_ids/)
+
+  assert.match(styles, /\.recall-result-desk/)
+  assert.match(styles, /\.recall-judgment-brief/)
+  assert.match(styles, /\.recall-evidence-ladder/)
+  assert.match(styles, /\.recall-trust-debt-panel/)
+  assert.match(styles, /\.recall-action-rail/)
+  assert.match(styles, /\.recall-writeback-preview/)
+})
+
 test('App preserves recent upload batch ids and scopes recall requests to the current space', () => {
   const file = read('frontend/src/App.vue')
 

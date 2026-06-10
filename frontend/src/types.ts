@@ -89,6 +89,73 @@ export type FocusGraph = {
   }
 }
 
+export type RecallEvidenceKind = 'user_anchor' | 'source' | 'ai_inference' | 'graph_path'
+
+export type RecallEvidenceTone = 'trusted' | 'support' | 'review' | 'graph'
+
+export type RecallEvidenceItem = {
+  id: string
+  kind: RecallEvidenceKind
+  tone: RecallEvidenceTone
+  title: string
+  body: string
+  source_id: string
+  space_name: string
+  review_status: string
+  metadata?: {
+    why_saved_status?: string
+    related_project?: string
+    open_loops?: string[]
+    future_recall_questions?: string[]
+    source_page?: string
+    path?: string
+  }
+}
+
+export type RecallTrustDebtItem = {
+  id: string
+  label: string
+  detail: string
+  severity: 'low' | 'medium' | 'high'
+}
+
+export type RecallActionKind = 'ask' | 'review' | 'save' | 'open_loop' | 'collect'
+
+export type RecallActionCard = {
+  id: string
+  kind: RecallActionKind
+  label: string
+  detail: string
+  question: string
+  source_id: string
+  space_id: string
+}
+
+export type RecallProjection = {
+  judgment: {
+    title: string
+    summary: string
+    confidence_label: 'strong' | 'mixed' | 'weak'
+    source: string
+    space_id: string
+    space_name: string
+  }
+  evidence_ladder: RecallEvidenceItem[]
+  trust_debt: {
+    level: 'low' | 'medium' | 'high'
+    items: RecallTrustDebtItem[]
+    summary: string
+  }
+  actions: RecallActionCard[]
+  write_back_preview: {
+    judgment: string
+    source_ids: string[]
+    next_step: string
+    graph_paths: string[]
+    diagnostics?: Record<string, unknown>
+  }
+}
+
 export type AskResponse = {
   question: string
   text: string
@@ -96,6 +163,7 @@ export type AskResponse = {
   contexts: EvidenceCard[]
   graph_paths: string[]
   focus_graph: FocusGraph
+  recall_projection?: RecallProjection
   topic?: Topic
   topic_state?: TopicState
   turns?: TopicTurn[]
