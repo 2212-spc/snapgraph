@@ -269,7 +269,6 @@ const emit = defineEmits<{
   collect: [payload: CollectPayload]
   openSpace: [spaceId: string]
   askBatch: [question: string]
-  updateTitle: [sourceId: string, title: string]
 }>()
 
 const text = ref('')

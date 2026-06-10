@@ -727,7 +727,7 @@ const interactionModes = [
 
 const stageContainer = ref<HTMLDivElement | null>(null)
 
-const surfaceMode = ref<GraphSurfaceMode>('overview')
+const surfaceMode = ref<GraphSurfaceMode>('source-map')
 const viewMode = ref<GraphViewMode>('memory')
 const interactionMode = ref<GraphInteractionMode>('arrange')
 const layoutPositions = ref<GraphLayoutPosition[]>([])
