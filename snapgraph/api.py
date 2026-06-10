@@ -50,6 +50,7 @@ from .llm_providers import provider_metadata, resolve_llm_with_metadata
 from .models import AnswerResult, DEFAULT_GRAPH_SPACE_ID, INBOX_GRAPH_SPACE_ID
 from .report import write_graph_report
 from .retrieval import retrieve_for_question
+from .recall_projection import build_recall_result_projection
 from .spaces import (
     accept_suggestion,
     create_graph_space,
@@ -1256,6 +1257,11 @@ def _ask_response_payload(
         "focus_graph": focus_graph_from_retrieval(
             ws,
             result.retrieval,
+            space_id=space_id,
+        ),
+        "recall_projection": build_recall_result_projection(
+            result,
+            provider_metadata=metadata_dict,
             space_id=space_id,
         ),
     }
