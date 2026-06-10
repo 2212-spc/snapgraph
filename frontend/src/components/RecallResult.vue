@@ -68,6 +68,21 @@
       </div>
     </article>
 
+    <section v-if="recallProjection" class="recall-result-desk">
+      <RecallJudgmentBrief :judgment="recallProjection.judgment" />
+      <div class="recall-result-desk-grid">
+        <RecallEvidenceLadder :items="recallProjection.evidence_ladder" />
+        <div class="recall-result-side-stack">
+          <RecallTrustDebtPanel :trust-debt="recallProjection.trust_debt" />
+          <RecallActionRail
+            :actions="recallProjection.actions"
+            @ask-follow-up="$emit('askFollowUp', $event)"
+          />
+        </div>
+      </div>
+      <RecallWriteBackPreview :preview="recallProjection.write_back_preview" />
+    </section>
+
     <section v-if="topicState" class="topic-state-strip">
       <div>
         <span class="section-kicker">当前话题</span>
@@ -316,8 +331,13 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import RecallActionRail from './RecallActionRail.vue'
+import RecallEvidenceLadder from './RecallEvidenceLadder.vue'
+import RecallJudgmentBrief from './RecallJudgmentBrief.vue'
 import RecallReflectionPanel from './RecallReflectionPanel.vue'
-import type { AskResponse, EvidenceCard, FocusGraph, RecallStage, Topic, TopicState, TopicTurn } from '../types'
+import RecallTrustDebtPanel from './RecallTrustDebtPanel.vue'
+import RecallWriteBackPreview from './RecallWriteBackPreview.vue'
+import type { AskResponse, EvidenceCard, FocusGraph, RecallProjection, RecallStage, Topic, TopicState, TopicTurn } from '../types'
 
 type SummaryChip = {
   label: string
@@ -353,6 +373,7 @@ const aiInferencesOpen = ref(false)
 const relatedMaterialsOpen = ref(false)
 const nextStepOpen = ref(false)
 
+const recallProjection = computed<RecallProjection | null>(() => props.result?.recall_projection || null)
 const materials = computed<EvidenceCard[]>(() => props.result?.contexts || props.focusGraph?.evidence_cards || [])
 const userStatements = computed(() => materials.value.filter((card) => card.why_saved_status === 'user-stated'))
 const aiInferences = computed(() => materials.value.filter((card) => card.why_saved_status !== 'user-stated'))

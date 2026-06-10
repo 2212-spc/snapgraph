@@ -206,6 +206,50 @@ def test_provider_answer_still_appends_retrieval_diagnostics(tmp_path: Path) -> 
     assert "- 关键词命中：" in answer.text
 
 
+def test_recall_result_projection_turns_answer_into_user_workbench(tmp_path: Path) -> None:
+    from snapgraph.recall_projection import build_recall_result_projection
+
+    workspace = _workspace_with_demo_sources(tmp_path)
+    answer = answer_question(workspace, "LLM Wiki")
+
+    projection = build_recall_result_projection(
+        answer,
+        provider_metadata={"provider_used": "mock", "fallback_used": False},
+        space_id="all",
+    )
+
+    assert projection["judgment"]["summary"]
+    assert projection["judgment"]["confidence_label"] in {"strong", "mixed", "weak"}
+    assert projection["evidence_ladder"]
+    assert projection["evidence_ladder"][0]["kind"] in {"user_anchor", "source"}
+    assert any(item["kind"] == "ai_inference" for item in projection["evidence_ladder"])
+    assert projection["trust_debt"]["level"] in {"low", "medium", "high"}
+    assert projection["actions"]
+    assert any(action["kind"] == "ask" for action in projection["actions"])
+    assert projection["write_back_preview"]["source_ids"]
+    assert projection["write_back_preview"]["judgment"]
+
+
+def test_recall_result_projection_explains_low_confidence_without_fabrication(tmp_path: Path) -> None:
+    from snapgraph.recall_projection import build_recall_result_projection
+
+    workspace = Workspace(tmp_path)
+    create_workspace(workspace)
+    answer = answer_question(workspace, "unrelated quantum pineapple")
+
+    projection = build_recall_result_projection(
+        answer,
+        provider_metadata={"provider_used": "none", "fallback_used": False},
+        space_id="all",
+    )
+
+    assert projection["judgment"]["confidence_label"] == "weak"
+    assert projection["evidence_ladder"] == []
+    assert projection["trust_debt"]["level"] == "high"
+    assert any(item["id"] == "no-local-evidence" for item in projection["trust_debt"]["items"])
+    assert projection["actions"][0]["kind"] == "collect"
+
+
 def test_provider_prompt_and_mock_answer_are_conclusion_first() -> None:
     assert "## 结论" in _SYNTHESIZE_SYSTEM
     assert _SYNTHESIZE_SYSTEM.index("## 结论") < _SYNTHESIZE_SYSTEM.index("## 找回的原话")
