@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -836,6 +838,26 @@ def api_ask_stream(payload: dict):
     )
 
 
+@app.post("/api/open-local")
+def api_open_local(payload: dict):
+    ws = _workspace()
+    source_id = str(payload.get("source_id") or "").strip()
+    target = str(payload.get("target") or payload.get("open_target") or "raw").strip()
+    if source_id:
+        local_file = _local_file_for_source(ws, source_id)
+        if not local_file:
+            raise HTTPException(404, "Source not found")
+        relative_path = local_file["path"] if target == "source_page" else local_file["raw_path"]
+    else:
+        relative_path = str(payload.get("path") or "").strip()
+    path = _workspace_file_path(ws, relative_path)
+    _open_path(path)
+    return {
+        "opened_path": ws.relative_to_workspace(path),
+        "absolute_path": str(path),
+    }
+
+
 # ── Report ──
 
 @app.get("/api/report")
@@ -1033,6 +1055,81 @@ def _contexts_payload(ws: Workspace, retrieval) -> list[dict]:
     ]
 
 
+def _local_files_payload(ws: Workspace, retrieval) -> list[dict]:
+    files = []
+    for context in retrieval.contexts:
+        local_file = _local_file_for_source(ws, context.source_id)
+        if not local_file:
+            continue
+        reason = _local_file_reason(context)
+        files.append({
+            **local_file,
+            "why_saved": context.why_saved,
+            "why_saved_status": context.why_saved_status or "unknown",
+            "space_name": context.space_name,
+            "source_excerpt": context.source_excerpt,
+            "match_reason": reason,
+        })
+    return files
+
+
+def _local_file_for_source(ws: Workspace, source_id: str) -> dict | None:
+    with sqlite3.connect(ws.sqlite_path) as conn:
+        row = conn.execute(
+            """
+            SELECT id, title, path
+            FROM sources
+            WHERE id = ?
+            """,
+            (source_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    source_page = f"wiki/sources/{row[0]}.md"
+    raw_path = row[2] or ""
+    return {
+        "source_id": row[0],
+        "title": row[1],
+        "path": source_page,
+        "raw_path": raw_path,
+        "open_target": "raw" if raw_path else "source_page",
+    }
+
+
+def _local_file_reason(context) -> str:
+    if context.why_saved_status == "user-stated" and context.why_saved:
+        return "命中了你保存时写下的理由。"
+    if context.why_saved_status == "AI-inferred":
+        return "命中了系统推断出的关联，需要你确认。"
+    if context.source_excerpt:
+        return "命中了材料正文里的相关片段。"
+    return "命中了本地图谱里的相关材料。"
+
+
+def _workspace_file_path(ws: Workspace, relative_path: str) -> Path:
+    if not relative_path:
+        raise HTTPException(400, "path is required")
+    root = ws.path.resolve()
+    path = (root / relative_path).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(400, "Path must stay inside the workspace") from exc
+    if not path.exists():
+        raise HTTPException(404, "Local file not found")
+    return path
+
+
+def _open_path(path: Path) -> None:
+    if sys.platform == "darwin":
+        command = ["open", str(path)]
+    elif sys.platform.startswith("win"):
+        command = ["cmd", "/c", "start", "", str(path)]
+    else:
+        command = ["xdg-open", str(path)]
+    subprocess.Popen(command)
+
+
 def _ask_response_payload(
     ws: Workspace,
     result: AnswerResult,
@@ -1045,6 +1142,7 @@ def _ask_response_payload(
         "provider": metadata_dict,
         "space_id": space_id,
         "contexts": _contexts_payload(ws, result.retrieval),
+        "local_files": _local_files_payload(ws, result.retrieval),
         "graph_paths": result.retrieval.graph_paths,
         "diagnostics": asdict(result.retrieval.diagnostics),
         "focus_graph": focus_graph_from_retrieval(

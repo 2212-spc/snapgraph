@@ -111,6 +111,7 @@ def _build_focus_graph(
     ]
 
     evidence_cards = _evidence_cards(contexts[:MAX_EVIDENCE_CARDS])
+    local_files = _local_files_for_contexts(workspace, contexts[:MAX_EVIDENCE_CARDS])
     open_loops = [
         loop
         for card in evidence_cards
@@ -123,6 +124,7 @@ def _build_focus_graph(
         "nodes": compact_nodes,
         "edges": compact_edges,
         "evidence_cards": evidence_cards,
+        "local_files": local_files,
         "open_loops": open_loops,
         "confidence_summary": _confidence_summary(contexts),
     }
@@ -135,6 +137,7 @@ def _empty_focus_graph(center: dict, space_id: str) -> dict:
         "nodes": [],
         "edges": [],
         "evidence_cards": [],
+        "local_files": [],
         "open_loops": [],
         "confidence_summary": {
             "source_count": 0,
@@ -227,6 +230,54 @@ def _evidence_cards(contexts: list[RetrievedContext]) -> list[dict]:
         }
         for context in contexts
     ]
+
+
+def _local_files_for_contexts(workspace: Workspace, contexts: list[RetrievedContext]) -> list[dict]:
+    source_ids = [context.source_id for context in contexts]
+    if not source_ids:
+        return []
+    placeholders = ",".join("?" for _ in source_ids)
+    with sqlite3.connect(workspace.sqlite_path) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT id, title, path
+            FROM sources
+            WHERE id IN ({placeholders})
+            """,
+            source_ids,
+        ).fetchall()
+    by_id = {row[0]: row for row in rows}
+    files = []
+    for context in contexts:
+        row = by_id.get(context.source_id)
+        if not row:
+            continue
+        raw_path = row[2] or ""
+        files.append(
+            {
+                "source_id": row[0],
+                "title": row[1],
+                "path": f"wiki/sources/{row[0]}.md",
+                "raw_path": raw_path,
+                "open_target": "raw" if raw_path else "source_page",
+                "why_saved": context.why_saved,
+                "why_saved_status": context.why_saved_status or "unknown",
+                "space_name": context.space_name,
+                "source_excerpt": context.source_excerpt,
+                "match_reason": _local_file_reason(context),
+            }
+        )
+    return files
+
+
+def _local_file_reason(context: RetrievedContext) -> str:
+    if context.why_saved_status == "user-stated" and context.why_saved:
+        return f"你当时写过保存理由：{context.why_saved}"
+    if context.why_saved_status == "AI-inferred" and context.why_saved:
+        return f"AI 曾推断它可能重要：{context.why_saved}"
+    if context.related_project:
+        return f"它和 {context.related_project} 有关联。"
+    return "这份文件和当前问题存在本地命中关系。"
 
 
 def _confidence_summary(contexts: list[RetrievedContext]) -> dict:

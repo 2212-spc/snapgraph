@@ -80,6 +80,7 @@ export type FocusGraph = {
   nodes: Array<{ id: string; type: string; label: string; graph_space_id?: string; status?: string }>
   edges: Array<{ id: string; source: string; target: string; relation: string; evidence_source_id?: string }>
   evidence_cards: EvidenceCard[]
+  local_files?: LocalFileResult[]
   open_loops: string[]
   confidence_summary: {
     source_count: number
@@ -156,6 +157,19 @@ export type RecallProjection = {
   }
 }
 
+export type LocalFileResult = {
+  source_id: string
+  title: string
+  path: string
+  raw_path: string
+  open_target: 'raw' | 'source_page'
+  why_saved?: string
+  why_saved_status?: string
+  space_name?: string
+  source_excerpt?: string
+  match_reason?: string
+}
+
 export type AskResponse = {
   question: string
   text: string
@@ -164,7 +178,10 @@ export type AskResponse = {
   graph_paths: string[]
   focus_graph: FocusGraph
   recall_projection?: RecallProjection
+  local_files?: LocalFileResult[]
 }
+
+export type RecallMode = 'auto' | 'files' | 'answer'
 
 export type RecallStage = {
   id: string

@@ -70,11 +70,16 @@
           v-if="activeView === 'recall'"
           :busy="busy"
           :busy-stage="busyStage"
+          :mode="selectedRecallMode"
+          :result-mode="currentRecallMode"
           :result="askResult"
           :focus-graph="focusGraph"
           :stages="recallStages"
           :current-question="currentRecallQuestion"
+          :recent-questions="recentRecallQuestions"
           @recall="runRecall"
+          @mode-changed="selectedRecallMode = $event"
+          @open-local-file="openLocalFile"
         />
 
         <SpacesView
@@ -223,7 +228,9 @@ import type {
   GraphPayload,
   GraphSpace,
   IngestResponse,
+  LocalFileResult,
   ProviderConfig,
+  RecallMode,
   RecallStage,
   SavedQuestion,
   Source,
@@ -267,6 +274,8 @@ const focusGraph = ref<FocusGraph | null>(null)
 const askResult = ref<AskResponse | null>(null)
 const currentRecallQuestion = ref('')
 const currentRecallSpaceId = ref('all')
+const selectedRecallMode = ref<RecallMode>('auto')
+const currentRecallMode = ref<RecallMode>('auto')
 const recallStages = ref<RecallStage[]>([])
 const collectResults = ref<IngestResponse[]>([])
 const recentBatchSourceIds = ref<string[]>([])
@@ -340,6 +349,18 @@ const sessionSubtitle = computed(() => {
   if (activeView.value === 'spaces') return `${spaces.value.length} 个空间`
   if (activeView.value === 'trust') return `${trustReview.value.summary.ai_inferred} 条 AI 推断`
   return collectResults.value.length ? `${collectResults.value.length} 份材料已进入知识库` : '收集入口'
+})
+
+const recentRecallQuestions = computed(() => savedQuestions.value.slice(0, 6).map((item) => ({
+  id: item.id,
+  question: item.question,
+  path: item.path,
+})))
+
+const openFilesForCurrentRecall = computed(() => {
+  const question = currentRecallQuestion.value || askResult.value?.question || ''
+  const match = savedQuestions.value.find((item) => item.question === question)
+  return match ? [{ path: match.path, title: match.question, source_id: match.id }] : []
 })
 
 function graphSpaceDisplayName(space: GraphSpace) {
@@ -606,7 +627,7 @@ async function refreshSelectedGraph() {
 async function askFromGraph(question: string) {
   currentRecallSpaceId.value = selectedSpaceId.value === 'all' ? 'all' : selectedSpaceId.value
   activeView.value = 'recall'
-  await runRecall(question)
+  await runRecall(question, 'auto')
 }
 
 async function askRecentBatch(question = '结合刚才上传的这批材料，我们下一步最应该优先完善什么？') {
@@ -616,11 +637,20 @@ async function askRecentBatch(question = '结合刚才上传的这批材料，�
   }
   currentRecallSpaceId.value = selectedSpaceId.value === 'all' ? 'all' : selectedSpaceId.value
   activeView.value = 'recall'
-  await runRecall(question)
+  await runRecall(question, 'auto', { preserveContext: true })
 }
 
-async function runRecall(question: string) {
+async function runRecall(
+  question: string,
+  mode: RecallMode = selectedRecallMode.value,
+  options: { preserveContext?: boolean } = {},
+) {
+  if (!options.preserveContext) {
+    recentBatchSourceIds.value = []
+  }
   currentRecallSpaceId.value = recallSpaceScope()
+  selectedRecallMode.value = mode
+  currentRecallMode.value = mode
   busy.value = true
   currentRecallQuestion.value = question
   askResult.value = null
@@ -631,16 +661,24 @@ async function runRecall(question: string) {
     { id: 'connect', label: '检查图谱连接', status: 'pending' },
     { id: 'write', label: '生成 AI 回复', status: 'pending' },
   ]
-  busyStage.value = '先找本地证据。'
-  try {
-    focusGraph.value = await api<FocusGraph>('/api/focus', {
-      method: 'POST',
-      body: JSON.stringify(recallRequestPayload(question)),
-    })
-    updateRecallStage({ id: 'evidence', label: '找本地证据', status: 'done', detail: `找到 ${focusGraph.value.evidence_cards.length} 条线索` })
-  } catch (error) {
-    updateRecallStage({ id: 'evidence', label: '找本地证据', status: 'error', detail: '本地证据检索失败' })
-    showToast(`本地证据检索失败：${messageFromError(error)}`, 'error')
+  if (mode !== 'answer') {
+    busyStage.value = '先找本地证据。'
+    try {
+      focusGraph.value = await api<FocusGraph>('/api/focus', {
+        method: 'POST',
+        body: JSON.stringify(recallRequestPayload(question)),
+      })
+      updateRecallStage({ id: 'evidence', label: '找本地证据', status: 'done', detail: `找到 ${focusGraph.value.evidence_cards.length} 条线索` })
+    } catch (error) {
+      updateRecallStage({ id: 'evidence', label: '找本地证据', status: 'error', detail: '本地证据检索失败' })
+      showToast(`本地证据检索失败：${messageFromError(error)}`, 'error')
+    }
+  }
+
+  if (mode === 'files') {
+    busy.value = false
+    busyStage.value = ''
+    return
   }
 
   busyStage.value = providerActionLabel.value
@@ -710,6 +748,7 @@ function partialAskResponse(question: string, text: string): AskResponse {
     contexts: focusGraph.value?.evidence_cards || [],
     graph_paths: [],
     focus_graph: focusGraph.value || emptyFocusGraph(),
+    local_files: focusGraph.value?.local_files || [],
   }
 }
 
@@ -718,6 +757,7 @@ function emptyFocusGraph(): FocusGraph {
     nodes: [],
     edges: [],
     evidence_cards: [],
+    local_files: [],
     open_loops: [],
     confidence_summary: {
       source_count: 0,
@@ -826,6 +866,21 @@ async function updateSourceTitle(sourceId: string, title: string) {
     showToast(messageFromError(error), 'error')
   } finally {
     busy.value = false
+  }
+}
+
+async function openLocalFile(file: LocalFileResult) {
+  try {
+    await api('/api/open-local', {
+      method: 'POST',
+      body: JSON.stringify({
+        source_id: file.source_id,
+        target: file.open_target || 'raw',
+      }),
+    })
+    showToast('已打开本地文件。')
+  } catch (error) {
+    showToast(`打开本地文件失败：${messageFromError(error)}`, 'error')
   }
 }
 

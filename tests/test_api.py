@@ -104,6 +104,59 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
     assert projection["write_back_preview"]["source_ids"]
 
 
+def test_api_ask_exposes_clickable_local_files(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    response = client.post(
+        "/api/ask",
+        json={"question": "我为什么要从 LLM Wiki 开始？", "save": False},
+    )
+
+    assert response.status_code == 200
+    local_files = response.json()["local_files"]
+    assert local_files
+    first = local_files[0]
+    assert first["source_id"]
+    assert first["title"]
+    assert first["path"].startswith("wiki/sources/")
+    assert first["raw_path"].startswith("raw/")
+    assert first["open_target"] in {"raw", "source_page"}
+    assert first["why_saved_status"] in {"user-stated", "AI-inferred", "unknown"}
+
+
+def test_api_open_local_file_is_workspace_scoped(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    opened: list[list[str]] = []
+    client = TestClient(app)
+    client.post("/api/demo/load")
+    ask_response = client.post(
+        "/api/ask",
+        json={"question": "我为什么要从 LLM Wiki 开始？", "save": False},
+    )
+    local_file = ask_response.json()["local_files"][0]
+
+    def fake_popen(command: list[str]) -> object:
+        opened.append(command)
+        return object()
+
+    monkeypatch.setattr("snapgraph.api.subprocess.Popen", fake_popen)
+    open_response = client.post(
+        "/api/open-local",
+        json={"source_id": local_file["source_id"], "target": "raw"},
+    )
+    outside_response = client.post(
+        "/api/open-local",
+        json={"path": "../outside.md"},
+    )
+
+    assert open_response.status_code == 200
+    assert open_response.json()["opened_path"].startswith("raw/")
+    assert opened
+    assert outside_response.status_code == 400
+
+
 def test_api_ask_accepts_current_batch_context_source_ids(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)
