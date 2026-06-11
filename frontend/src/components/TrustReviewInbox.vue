@@ -53,6 +53,7 @@
         <div class="trust-review-action-hint">
           {{ actionHint(item) }}
         </div>
+        <TrustReviewSignals :item="item" compact />
         <div class="trust-review-compact-meta">
           <span>{{ boundaryLabel(item.why_saved_status) }}</span>
           <span>{{ item.space_name || '未分配空间' }}</span>
@@ -67,6 +68,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import TrustReviewSignals from './TrustReviewSignals.vue'
 import type { TrustReviewFilters, TrustReviewItem, TrustRiskLevel } from './trustCenterTypes'
 
 const props = defineProps<{

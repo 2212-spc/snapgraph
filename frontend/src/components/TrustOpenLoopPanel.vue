@@ -15,6 +15,8 @@
       <span>dismissed {{ payload.summary.by_state.dismissed || 0 }}</span>
     </div>
 
+    <p class="trust-loop-priority-note">{{ priorityNote }}</p>
+
     <div class="trust-open-loop-list">
       <article v-for="loop in visibleLoops" :key="loop.loop_id" class="trust-open-loop-card">
         <div>
@@ -53,6 +55,14 @@ const emit = defineEmits<{
 const notes = reactive<Record<string, string>>({})
 const visibleLoops = computed(() => props.payload.items.slice(0, 4))
 const overflowCount = computed(() => Math.max(props.payload.items.length - visibleLoops.value.length, 0))
+const priorityNote = computed(() => {
+  const nextCount = props.payload.summary.by_state.next || 0
+  const activeCount = props.payload.summary.by_state.active || 0
+  if (nextCount) return `${nextCount} 个问题已经标成 next，适合进入下一轮行动。`
+  if (activeCount) return `${activeCount} 个问题仍然 active，先判断它们是否还值得继续。`
+  if (props.payload.summary.total) return '剩余问题大多已经处理，可以展开确认是否需要恢复。'
+  return '当前没有悬而未决的问题。'
+})
 
 function setState(loopId: string, state: TrustOpenLoopState) {
   emit('updateLoop', loopId, {

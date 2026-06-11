@@ -24,6 +24,21 @@
       </div>
     </section>
 
+    <TrustSessionPlanner
+      :mode="selectedSessionMode"
+      :review="review"
+      :open-loops="openLoops"
+      :diagnostics="diagnostics"
+      @mode-changed="selectedSessionMode = $event"
+    />
+
+    <TrustReviewProgress
+      :mode="selectedSessionMode"
+      :items="sessionItems"
+      :selected-source-ids="selectedSourceIds"
+      :summary="review.summary"
+    />
+
     <TrustBatchActionBar
       :source-ids="selectedSourceIds"
       :busy="busy"
@@ -32,7 +47,7 @@
 
     <div class="trust-workbench-grid">
       <TrustReviewInbox
-        :items="review.items"
+        :items="sessionItems"
         :selected-source-ids="selectedSourceIds"
         :filters="filters"
         @select-review="$emit('selectReview', $event)"
@@ -60,12 +75,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import TrustBatchActionBar from './TrustBatchActionBar.vue'
 import TrustDiagnosticsPanel from './TrustDiagnosticsPanel.vue'
 import TrustOpenLoopPanel from './TrustOpenLoopPanel.vue'
+import TrustReviewProgress from './TrustReviewProgress.vue'
 import TrustReviewDetail from './TrustReviewDetail.vue'
 import TrustReviewInbox from './TrustReviewInbox.vue'
+import TrustSessionPlanner from './TrustSessionPlanner.vue'
 import type {
   TrustBatchPayload,
   TrustDiagnostics,
@@ -73,7 +90,9 @@ import type {
   TrustOpenLoopUpdatePayload,
   TrustReviewDetailPayload,
   TrustReviewFilters,
+  TrustReviewItem,
   TrustReviewPayload,
+  TrustReviewSessionMode,
 } from './trustCenterTypes'
 
 const props = defineProps<{
@@ -95,7 +114,27 @@ defineEmits<{
   updateOpenLoop: [loopId: string, payload: TrustOpenLoopUpdatePayload]
 }>()
 
+const selectedSessionMode = ref<TrustReviewSessionMode>('high-risk')
 const urgentReviewCount = computed(() => props.review.summary.critical + props.review.summary.high)
+
+const sessionItems = computed(() => {
+  const items = props.review.items
+  const filtered = items.filter((item) => matchesSessionMode(item, selectedSessionMode.value))
+  return filtered.length ? filtered : items
+})
+
+function matchesSessionMode(item: TrustReviewItem, mode: TrustReviewSessionMode) {
+  if (mode === 'high-risk') {
+    return item.risk_level === 'critical' || item.risk_level === 'high' || item.needs_review
+  }
+  if (mode === 'quick-clear') {
+    return item.risk_level === 'medium' || item.risk_level === 'low' || item.review_status !== 'unreviewed'
+  }
+  if (mode === 'open-loops') {
+    return item.has_open_loops
+  }
+  return true
+}
 
 const focusHeadline = computed(() => {
   if (props.review.summary.critical) {

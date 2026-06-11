@@ -3,6 +3,7 @@
     <div>
       <span>批量审查</span>
       <strong>{{ sourceIds.length ? `${sourceIds.length} 条已选择` : '选择队列项后操作' }}</strong>
+      <p class="trust-batch-guidance">{{ batchGuidance }}</p>
     </div>
     <input
       v-model="note"
@@ -32,6 +33,11 @@ const emit = defineEmits<{
 
 const note = ref('')
 const disabled = computed(() => props.busy || !props.sourceIds.length)
+const batchGuidance = computed(() => {
+  if (!props.sourceIds.length) return '批量动作适合已经看过、判断比较确定的材料。'
+  if (props.sourceIds.length === 1) return '只有一条时也可以批量处理；拿不准就打开右侧单条审查。'
+  return '多条一起处理前，确认它们属于同一种判断。'
+})
 
 function submit(action: TrustBatchPayload['action']) {
   if (disabled.value) return

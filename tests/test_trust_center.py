@@ -24,6 +24,33 @@ def test_trust_review_queue_prioritizes_unreviewed_ai_context(
     assert "recommended_action" in payload["items"][0]
 
 
+def test_trust_review_queue_exposes_session_decision_fields(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    payload = client.get("/api/trust/review").json()
+    item = payload["items"][0]
+
+    assert item["risk_reasons"]
+    assert item["review_focus"]["headline"]
+    assert item["review_focus"]["primary_action"]
+    assert item["trust_signals"]["evidence_count"] == item["evidence_count"]
+    assert item["trust_signals"]["has_open_loops"] == item["has_open_loops"]
+    assert item["trust_signals"]["topic_count"] == len(item["topic_refs"])
+    assert item["decision_options"]
+    assert {option["action"] for option in item["decision_options"]} == {
+        "confirmed",
+        "rewritten",
+        "rejected",
+        "deferred",
+    }
+    assert any(option["requires_rewrite"] for option in item["decision_options"])
+
+
 def test_trust_review_detail_exposes_traceability(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)

@@ -3,6 +3,7 @@ import type { GraphSpace } from '../types'
 export type TrustRiskLevel = 'critical' | 'high' | 'medium' | 'low'
 export type TrustReviewStatus = 'unreviewed' | 'confirmed' | 'rewritten' | 'rejected' | 'deferred'
 export type TrustOpenLoopState = 'active' | 'next' | 'resolved' | 'dismissed'
+export type TrustReviewSessionMode = 'high-risk' | 'quick-clear' | 'open-loops' | 'all'
 
 export type TrustReviewFilters = {
   status?: string
@@ -18,6 +19,37 @@ export type TrustTopicRef = {
   title: string
   space_id: string
   role: string
+}
+
+export type TrustDecisionOption = {
+  action: Exclude<TrustReviewStatus, 'unreviewed'>
+  label: string
+  tone: 'positive' | 'constructive' | 'danger' | 'neutral'
+  description: string
+  requires_note: boolean
+  requires_rewrite: boolean
+}
+
+export type TrustReviewFocus = {
+  headline: string
+  detail: string
+  primary_action: string
+  evidence_prompt: string
+}
+
+export type TrustSignals = {
+  risk_level: TrustRiskLevel
+  confidence: number
+  confidence_percent: number
+  boundary: string
+  review_status: TrustReviewStatus
+  evidence_count: number
+  topic_count: number
+  open_loop_count: number
+  future_question_count: number
+  has_open_loops: boolean
+  has_review_note: boolean
+  needs_user_decision: boolean
 }
 
 export type TrustReviewItem = {
@@ -40,6 +72,10 @@ export type TrustReviewItem = {
   reviewed_at: string
   risk_level: TrustRiskLevel
   recommended_action: string
+  risk_reasons: string[]
+  decision_options: TrustDecisionOption[]
+  review_focus: TrustReviewFocus
+  trust_signals: TrustSignals
   evidence_count: number
   topic_refs: TrustTopicRef[]
   has_open_loops: boolean
