@@ -22,6 +22,10 @@
         </div>
       </section>
 
+      <TrustReviewSignals :item="detail.item" />
+
+      <TrustRiskLens :item="detail.item" />
+
       <details class="trust-detail-disclosure">
         <summary>
           <span>证据路径</span>
@@ -65,24 +69,22 @@
         </section>
       </details>
 
-      <section class="trust-detail-section trust-detail-actions">
-        <span>单项动作</span>
-        <textarea v-model="note" placeholder="说明你为什么这样判断" />
-        <textarea v-model="rewriteText" placeholder="如果要改写 AI 推断，在这里写用户确认过的理由" />
-        <div class="trust-detail-button-row">
-          <button class="paper-button" type="button" :disabled="busy" @click="submit('deferred')">稍后</button>
-          <button class="paper-button danger" type="button" :disabled="busy" @click="submit('rejected')">拒绝</button>
-          <button class="paper-button" type="button" :disabled="busy || !rewriteText.trim()" @click="submitRewrite">改写</button>
-          <button class="primary-button" type="button" :disabled="busy" @click="submit('confirmed')">确认</button>
-        </div>
-      </section>
+      <TrustDecisionCoach
+        :detail="detail"
+        :busy="busy"
+        @batch-action="$emit('batchAction', $event)"
+      />
     </template>
     <p v-else class="trust-empty">从左侧队列选择一条材料查看证据。</p>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
+import { boundaryLabel } from './trustCenterCopy'
+import TrustDecisionCoach from './TrustDecisionCoach.vue'
+import TrustReviewSignals from './TrustReviewSignals.vue'
+import TrustRiskLens from './TrustRiskLens.vue'
 import type { TrustBatchPayload, TrustReviewDetailPayload } from './trustCenterTypes'
 
 const props = defineProps<{
@@ -95,8 +97,6 @@ const emit = defineEmits<{
   batchAction: [payload: TrustBatchPayload]
 }>()
 
-const note = ref('')
-const rewriteText = ref('')
 const evidencePaths = computed(() => props.detail?.evidence_paths || [])
 const history = computed(() => props.detail?.history || [])
 const detailRiskCopy = computed(() => {
@@ -107,39 +107,4 @@ const detailRiskCopy = computed(() => {
   if (item.has_open_loops) return '它还连着未闭环问题'
   return '低压力，可以批量处理'
 })
-
-watch(
-  () => props.detail?.item.source_id,
-  () => {
-    note.value = ''
-    rewriteText.value = ''
-  },
-)
-
-function submit(action: TrustBatchPayload['action']) {
-  if (!props.detail) return
-  emit('batchAction', {
-    source_ids: [props.detail.item.source_id],
-    action,
-    note: note.value.trim(),
-  })
-}
-
-function submitRewrite() {
-  if (!props.detail || !rewriteText.value.trim()) return
-  emit('batchAction', {
-    source_ids: [props.detail.item.source_id],
-    action: 'rewritten',
-    note: note.value.trim(),
-    rewrites: {
-      [props.detail.item.source_id]: rewriteText.value.trim(),
-    },
-  })
-}
-
-function boundaryLabel(status: string) {
-  if (status === 'user-stated') return '用户原话'
-  if (status === 'AI-inferred') return 'AI 推断'
-  return status || '边界未知'
-}
 </script>

@@ -7466,6 +7466,50 @@ button:not(:disabled):hover {
   gap: 6px;
 }
 
+.trust-review-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.trust-review-signals span {
+  border: 1px solid rgba(44, 53, 68, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+  line-height: 1.2;
+  padding: 4px 8px;
+}
+
+.trust-review-signals[data-compact="false"] {
+  border: 1px solid rgba(44, 53, 68, 0.1);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--secondary) 48%, white);
+  padding: 8px;
+}
+
+.trust-review-signals .risk-critical {
+  border-color: rgba(160, 48, 39, 0.36);
+  color: #8c2b24;
+}
+
+.trust-review-signals .risk-high {
+  border-color: rgba(176, 80, 30, 0.34);
+  color: #974613;
+}
+
+.trust-review-signals .risk-medium {
+  border-color: rgba(106, 127, 61, 0.34);
+  color: #5d7135;
+}
+
+.trust-review-signals .risk-low {
+  border-color: rgba(58, 105, 97, 0.34);
+  color: #315f58;
+}
+
 .trust-detail-panel {
   position: sticky;
   top: 14px;
@@ -7496,6 +7540,145 @@ button:not(:disabled):hover {
   margin: 0;
   color: var(--foreground);
   line-height: 1.5;
+}
+
+.trust-risk-lens,
+.trust-decision-coach {
+  border: 1px solid rgba(44, 53, 68, 0.12);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--paper) 88%, white);
+  padding: 10px;
+  display: grid;
+  gap: 9px;
+}
+
+.trust-risk-lens[data-risk="critical"] {
+  border-color: rgba(160, 48, 39, 0.28);
+  background: color-mix(in srgb, #fff7f2 70%, white);
+}
+
+.trust-risk-lens[data-risk="high"] {
+  border-color: rgba(176, 80, 30, 0.26);
+  background: color-mix(in srgb, #fff9ec 70%, white);
+}
+
+.trust-risk-lens-head,
+.trust-decision-coach-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.trust-risk-lens h4,
+.trust-decision-coach h4 {
+  margin: 2px 0 0;
+  font-size: 0.98rem;
+}
+
+.trust-risk-lens p {
+  margin: 0;
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+.trust-risk-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trust-risk-reasons span {
+  border: 1px solid rgba(44, 53, 68, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--foreground);
+  font-size: 0.74rem;
+  padding: 4px 8px;
+}
+
+.trust-risk-evidence-prompt {
+  border-left: 3px solid rgba(53, 99, 91, 0.36);
+  display: grid;
+  gap: 3px;
+  padding-left: 9px;
+}
+
+.trust-risk-evidence-prompt span,
+.trust-decision-field span {
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trust-decision-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.trust-decision-options button {
+  border: 1px solid rgba(44, 53, 68, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--foreground);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trust-decision-options button.active {
+  border-color: rgba(53, 99, 91, 0.44);
+  background: color-mix(in srgb, var(--secondary) 76%, white);
+}
+
+.trust-decision-options button span {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.trust-decision-field {
+  display: grid;
+  gap: 5px;
+}
+
+.trust-decision-field textarea {
+  width: 100%;
+  min-height: 72px;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 8px;
+  font: inherit;
+}
+
+.trust-decision-field[data-required="true"] textarea {
+  border-color: rgba(176, 80, 30, 0.42);
+}
+
+.trust-decision-validation {
+  margin: 0;
+  border: 1px solid rgba(176, 80, 30, 0.24);
+  border-radius: 8px;
+  background: #fff9ec;
+  color: #8a4518;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  padding: 8px;
+}
+
+.trust-decision-submit-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .trust-detail-disclosure {
