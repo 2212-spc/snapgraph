@@ -3,18 +3,25 @@
     <header class="trust-center-header">
       <div>
         <p class="eyebrow">Trust Operations</p>
-        <h1>信任运营中心</h1>
-        <p>把 AI 推断、证据路径、open loop 和审查历史放在一个可操作的工作台里。</p>
+        <h1>信任工作台</h1>
+        <p>先处理高风险判断，证据、open loop 和诊断按需展开。</p>
       </div>
       <button class="paper-button" type="button" :disabled="busy" @click="$emit('refresh')">刷新</button>
     </header>
 
-    <section class="trust-summary-grid">
-      <article v-for="metric in metrics" :key="metric.label" :class="metric.tone">
-        <span>{{ metric.label }}</span>
-        <strong>{{ metric.value }}</strong>
-        <small>{{ metric.caption }}</small>
-      </article>
+    <section class="trust-focus-strip" aria-label="信任工作台焦点">
+      <div class="trust-focus-primary">
+        <span class="section-kicker">今日焦点</span>
+        <h2>{{ focusHeadline }}</h2>
+        <p>{{ focusCaption }}</p>
+      </div>
+      <div class="trust-focus-stats">
+        <article v-for="metric in compactMetrics" :key="metric.label" :class="metric.tone">
+          <span>{{ metric.label }}</span>
+          <strong>{{ metric.value }}</strong>
+          <small>{{ metric.caption }}</small>
+        </article>
+      </div>
     </section>
 
     <TrustBatchActionBar
@@ -88,29 +95,54 @@ defineEmits<{
   updateOpenLoop: [loopId: string, payload: TrustOpenLoopUpdatePayload]
 }>()
 
-const metrics = computed(() => [
+const urgentReviewCount = computed(() => props.review.summary.critical + props.review.summary.high)
+
+const focusHeadline = computed(() => {
+  if (props.review.summary.critical) {
+    return `先确认 ${props.review.summary.critical} 条 critical 推断`
+  }
+  if (props.review.summary.high) {
+    return `先扫完 ${props.review.summary.high} 条高风险判断`
+  }
+  if (props.openLoops.summary.total) {
+    return `把 ${props.openLoops.summary.total} 个 open loop 变成下一步`
+  }
+  return '当前没有高压审查项'
+})
+
+const focusCaption = computed(() => {
+  if (urgentReviewCount.value) {
+    return '默认只展示最能帮助你做决定的信息；需要证据、历史和诊断时再展开。'
+  }
+  if (props.review.summary.unreviewed) {
+    return '剩余项目风险较低，可以按空间或关键词慢慢清理，不需要一次看完所有细节。'
+  }
+  return '信任边界已经比较干净，后续重点是继续沉淀用户确认过的理由。'
+})
+
+const compactMetrics = computed(() => [
   {
-    label: 'critical',
-    value: props.review.summary.critical,
-    caption: '必须先判断的 AI 推断',
+    label: '需判断',
+    value: props.review.summary.unreviewed,
+    caption: `${urgentReviewCount.value} 条高优先级`,
     tone: 'tone-critical',
   },
   {
-    label: 'high',
-    value: props.review.summary.high,
-    caption: '高风险证据或未审查项',
+    label: 'AI 推断',
+    value: props.review.summary.ai_inferred,
+    caption: `${props.review.summary.user_stated} 条用户原话`,
     tone: 'tone-high',
   },
   {
-    label: 'open loops',
+    label: 'open loop',
     value: props.openLoops.summary.total,
-    caption: '还没有闭环的问题',
+    caption: `${props.openLoops.summary.by_state.next || 0} 个下一步`,
     tone: 'tone-loop',
   },
   {
-    label: 'history',
+    label: '已审查',
     value: props.diagnostics?.history_count || 0,
-    caption: '已经写入的审查记录',
+    caption: '可追溯记录',
     tone: 'tone-history',
   },
 ])

@@ -16,7 +16,7 @@
     </div>
 
     <div class="trust-open-loop-list">
-      <article v-for="loop in payload.items" :key="loop.loop_id" class="trust-open-loop-card">
+      <article v-for="loop in visibleLoops" :key="loop.loop_id" class="trust-open-loop-card">
         <div>
           <span>{{ loop.state }}</span>
           <strong>{{ loop.text }}</strong>
@@ -29,16 +29,19 @@
           <button class="ghost-button" type="button" :disabled="busy" @click="setState(loop.loop_id, 'dismissed')">dismissed</button>
         </div>
       </article>
+      <p v-if="overflowCount" class="trust-loop-overflow-note">
+        还有 {{ overflowCount }} 个 open loop 已收起，先处理上面这些更高价值的问题。
+      </p>
       <p v-if="!payload.items.length" class="trust-empty">当前没有 open-loop。</p>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import type { TrustOpenLoopPayload, TrustOpenLoopState, TrustOpenLoopUpdatePayload } from './trustCenterTypes'
 
-defineProps<{
+const props = defineProps<{
   payload: TrustOpenLoopPayload
   busy: boolean
 }>()
@@ -48,6 +51,8 @@ const emit = defineEmits<{
 }>()
 
 const notes = reactive<Record<string, string>>({})
+const visibleLoops = computed(() => props.payload.items.slice(0, 4))
+const overflowCount = computed(() => Math.max(props.payload.items.length - visibleLoops.value.length, 0))
 
 function setState(loopId: string, state: TrustOpenLoopState) {
   emit('updateLoop', loopId, {

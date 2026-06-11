@@ -3,7 +3,7 @@
     <div class="trust-panel-head">
       <div>
         <span class="section-kicker">Review Inbox</span>
-        <h3>AI 推断审查队列</h3>
+        <h3>待判断</h3>
       </div>
       <strong>{{ items.length }} 条</strong>
     </div>
@@ -48,13 +48,16 @@
         </label>
         <button class="trust-review-main" type="button" @click="$emit('selectReview', item.source_id)">
           <strong>{{ item.title }}</strong>
-          <p>{{ item.why_saved || item.summary || '这条材料还没有稳定的保存理由。' }}</p>
+          <p>{{ compactReason(item) }}</p>
         </button>
-        <div class="trust-review-meta">
-          <span>{{ item.why_saved_status }}</span>
-          <span>{{ item.space_name }}</span>
-          <span>{{ Math.round(item.confidence * 100) }}%</span>
-          <span v-if="item.open_loops.length">{{ item.open_loops.length }} open loop</span>
+        <div class="trust-review-action-hint">
+          {{ actionHint(item) }}
+        </div>
+        <div class="trust-review-compact-meta">
+          <span>{{ boundaryLabel(item.why_saved_status) }}</span>
+          <span>{{ item.space_name || '未分配空间' }}</span>
+          <span>可信度 {{ Math.round(item.confidence * 100) }}%</span>
+          <span v-if="item.open_loops.length">{{ item.open_loops.length }} 个 open loop</span>
         </div>
       </article>
       <p v-if="!items.length" class="trust-empty">当前筛选下没有待审查项。</p>
@@ -107,5 +110,23 @@ function riskLabel(level: TrustRiskLevel) {
   if (level === 'high') return 'high'
   if (level === 'medium') return 'medium'
   return 'low'
+}
+
+function compactReason(item: TrustReviewItem) {
+  const text = item.why_saved || item.summary || '这条材料还没有稳定的保存理由。'
+  return text.length > 108 ? `${text.slice(0, 108)}...` : text
+}
+
+function boundaryLabel(status: string) {
+  if (status === 'user-stated') return '用户原话'
+  if (status === 'AI-inferred') return 'AI 推断'
+  return status || '边界未知'
+}
+
+function actionHint(item: TrustReviewItem) {
+  if (item.risk_level === 'critical') return '建议现在处理：确认、改写或拒绝这条推断。'
+  if (item.risk_level === 'high') return '建议优先扫一眼证据，再决定是否确认。'
+  if (item.open_loops.length) return '可以转成下一步，避免问题继续悬空。'
+  return item.recommended_action || '低压力项目，可以稍后批量处理。'
 }
 </script>
