@@ -3,7 +3,7 @@
     <template v-if="detail">
       <div class="trust-panel-head">
         <div>
-          <span class="section-kicker">Evidence Detail</span>
+          <span class="section-kicker">当前材料</span>
           <h3>{{ detail.item.title }}</h3>
         </div>
         <button class="ghost-button" type="button" @click="$emit('close')">关闭</button>
@@ -14,19 +14,37 @@
           <span>{{ boundaryLabel(detail.item.why_saved_status) }}</span>
           <strong>{{ detailRiskCopy }}</strong>
         </div>
-        <p>{{ detail.item.why_saved || '没有稳定保存理由。' }}</p>
+        <p>{{ cleanTrustText(detail.item.why_saved || '没有稳定保存理由。') }}</p>
         <div class="trust-review-meta">
-          <span>{{ detail.item.risk_level }}</span>
-          <span>{{ detail.item.review_status }}</span>
+          <span>{{ detailRiskLabel }}</span>
+          <span>{{ reviewStatusLabel(detail.item.review_status) }}</span>
           <span>可信度 {{ Math.round(detail.item.confidence * 100) }}%</span>
         </div>
       </section>
 
-      <TrustReviewSignals :item="detail.item" />
+      <TrustDecisionCoach
+        :detail="detail"
+        :busy="busy"
+        @batch-action="$emit('batchAction', $event)"
+      />
 
-      <TrustRiskLens :item="detail.item" />
+      <div class="trust-detail-compact-disclosures">
+        <details class="trust-detail-disclosure">
+          <summary>
+            <span>为什么需要你看</span>
+            <strong>{{ detailRiskLabel }}</strong>
+          </summary>
+          <TrustRiskLens :item="detail.item" />
+        </details>
 
-      <TrustAnalysisDigest :detail="detail" />
+        <details class="trust-detail-disclosure">
+          <summary>
+            <span>系统简短判断</span>
+            <strong>{{ analysisScoreLabel }}</strong>
+          </summary>
+          <TrustAnalysisDigest :detail="detail" />
+        </details>
+      </div>
 
       <details class="trust-detail-disclosure">
         <summary>
@@ -43,14 +61,14 @@
 
       <details class="trust-detail-disclosure">
         <summary>
-          <span>Open loops</span>
+          <span>未闭环问题</span>
           <strong>{{ detail.open_loops.length }} 个</strong>
         </summary>
         <section class="trust-detail-section">
           <p v-for="loop in detail.open_loops" :key="loop.loop_id" class="trust-loop-line">
-            {{ loop.text }} · {{ loop.state }}
+            {{ loop.text }} - {{ loopStateLabel(loop.state) }}
           </p>
-          <p v-if="!detail.open_loops.length" class="trust-empty">没有关联 open loop。</p>
+          <p v-if="!detail.open_loops.length" class="trust-empty">没有关联未闭环问题。</p>
         </section>
       </details>
 
@@ -71,22 +89,16 @@
         </section>
       </details>
 
-      <TrustDecisionCoach
-        :detail="detail"
-        :busy="busy"
-        @batch-action="$emit('batchAction', $event)"
-      />
     </template>
-    <p v-else class="trust-empty">从左侧队列选择一条材料查看证据。</p>
+    <p v-else class="trust-empty">先从左侧选择一条材料，这里会显示保存理由、证据和判断按钮。</p>
   </aside>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { boundaryLabel } from './trustCenterCopy'
+import { boundaryLabel, cleanTrustText, reviewStatusLabel, riskToneLabel } from './trustCenterCopy'
 import TrustAnalysisDigest from './TrustAnalysisDigest.vue'
 import TrustDecisionCoach from './TrustDecisionCoach.vue'
-import TrustReviewSignals from './TrustReviewSignals.vue'
 import TrustRiskLens from './TrustRiskLens.vue'
 import type { TrustBatchPayload, TrustReviewDetailPayload } from './trustCenterTypes'
 
@@ -102,6 +114,14 @@ const emit = defineEmits<{
 
 const evidencePaths = computed(() => props.detail?.evidence_paths || [])
 const history = computed(() => props.detail?.history || [])
+const detailRiskLabel = computed(() => {
+  const level = props.detail?.item.risk_level
+  return level ? riskToneLabel(level) : ''
+})
+const analysisScoreLabel = computed(() => {
+  const analysis = props.detail?.analysis || props.detail?.item.analysis
+  return analysis ? `${analysis.trust_score.score} 分` : '已收起'
+})
 const detailRiskCopy = computed(() => {
   const item = props.detail?.item
   if (!item) return ''
@@ -110,4 +130,12 @@ const detailRiskCopy = computed(() => {
   if (item.has_open_loops) return '它还连着未闭环问题'
   return '低压力，可以批量处理'
 })
+
+function loopStateLabel(state: string) {
+  if (state === 'active') return '还需要判断'
+  if (state === 'next') return '下一步'
+  if (state === 'resolved') return '已解决'
+  if (state === 'dismissed') return '已忽略'
+  return state
+}
 </script>

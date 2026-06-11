@@ -340,14 +340,14 @@ const sessionTitle = computed(() => {
     return currentRecallQuestion.value || askResult.value?.question || '新对话'
   }
   if (activeView.value === 'spaces') return selectedSpaceName.value
-  if (activeView.value === 'trust') return '信任运营'
+  if (activeView.value === 'trust') return '信任检查'
   return '收集'
 })
 
 const sessionSubtitle = computed(() => {
   if (activeView.value === 'recall') return busy.value ? busyStage.value || '正在找回' : '找回入口'
   if (activeView.value === 'spaces') return `${spaces.value.length} 个空间`
-  if (activeView.value === 'trust') return `${trustReview.value.summary.ai_inferred} 条 AI 推断`
+  if (activeView.value === 'trust') return `${trustReview.value.summary.ai_inferred} 条 AI 猜测`
   return collectResults.value.length ? `${collectResults.value.length} 份材料已进入知识库` : '收集入口'
 })
 
@@ -387,8 +387,8 @@ const activityEvidenceDetail = computed(() => {
     return `本轮会优先读取刚上传的 ${recentBatchSourceIds.value.length} 份材料，再扩展到旧记忆。`
   }
   const summary = focusGraph.value?.confidence_summary
-  if (!summary) return '等待一次找回后，会显示用户原话、AI 推断和证据数量。'
-  return `${summary.user_stated} 条用户原话，${summary.ai_inferred} 条 AI-inferred 线索。`
+  if (!summary) return '等待一次找回后，会显示用户原话、AI 猜测和证据数量。'
+  return `${summary.user_stated} 条用户原话，${summary.ai_inferred} 条 AI 猜测线索。`
 })
 
 const graphSummary = computed(() => {

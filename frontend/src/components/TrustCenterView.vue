@@ -2,16 +2,58 @@
   <section class="trust-center-view">
     <header class="trust-center-header">
       <div>
-        <p class="eyebrow">Trust Operations</p>
-        <h1>信任工作台</h1>
-        <p>先处理高风险判断，证据、open loop 和诊断按需展开。</p>
+        <p class="eyebrow">信任</p>
+        <h1>信任检查</h1>
+        <p>这里只帮你确认一件事：系统有没有把 AI 猜测当成你的真实想法。</p>
       </div>
       <button class="paper-button" type="button" :disabled="busy" @click="$emit('refresh')">刷新</button>
     </header>
 
-    <section class="trust-focus-strip" aria-label="信任工作台焦点">
+    <section class="memory-quick-actions trust-home-actions" aria-label="信任检查快捷入口">
+      <button
+        :class="quickActionClass('high-risk')"
+        type="button"
+        :aria-pressed="selectedSessionMode === 'high-risk'"
+        :aria-label="trustSessionModeLabel('high-risk')"
+        :disabled="busy"
+        @click="selectSessionMode('high-risk')"
+      >
+        <span>先确认 AI 猜测</span>
+        <strong>{{ urgentReviewCount ? `${urgentReviewCount} 条最该看` : '没有高压项' }}</strong>
+        <b v-if="selectedSessionMode === 'high-risk'" class="trust-quick-action-state">当前</b>
+        <small>看系统有没有替你乱猜保存理由。</small>
+      </button>
+      <button
+        :class="quickActionClass('open-loops')"
+        type="button"
+        :aria-pressed="selectedSessionMode === 'open-loops'"
+        :aria-label="trustSessionModeLabel('open-loops')"
+        :disabled="busy"
+        @click="selectSessionMode('open-loops')"
+      >
+        <span>处理未闭环问题</span>
+        <strong>{{ props.openLoops.summary.total ? `${props.openLoops.summary.total} 个问题` : '暂时没有问题' }}</strong>
+        <b v-if="selectedSessionMode === 'open-loops'" class="trust-quick-action-state">当前</b>
+        <small>把悬着的问题变成下一步或标记已解决。</small>
+      </button>
+      <button
+        :class="quickActionClass('all')"
+        type="button"
+        :aria-pressed="selectedSessionMode === 'all'"
+        :aria-label="trustSessionModeLabel('all')"
+        :disabled="busy"
+        @click="selectSessionMode('all')"
+      >
+        <span>查看全部材料</span>
+        <strong>{{ props.review.summary.total }} 条记录</strong>
+        <b v-if="selectedSessionMode === 'all'" class="trust-quick-action-state">当前</b>
+        <small>需要复盘时，再看完整队列和诊断。</small>
+      </button>
+    </section>
+
+    <section class="trust-focus-strip trust-simple-path" aria-label="这页要做什么">
       <div class="trust-focus-primary">
-        <span class="section-kicker">今日焦点</span>
+        <span class="section-kicker">现在要做什么</span>
         <h2>{{ focusHeadline }}</h2>
         <p>{{ focusCaption }}</p>
       </div>
@@ -24,24 +66,22 @@
       </div>
     </section>
 
-    <TrustSessionPlanner
-      :mode="selectedSessionMode"
-      :review="review"
-      :open-loops="openLoops"
-      :diagnostics="diagnostics"
-      @mode-changed="selectedSessionMode = $event"
-    />
-
-    <TrustQuietReport :session="review.session" :report="review.report" />
-
-    <TrustReviewProgress
-      :mode="selectedSessionMode"
-      :items="sessionItems"
-      :selected-source-ids="selectedSourceIds"
-      :summary="review.summary"
-    />
+    <details class="trust-how-it-works">
+      <summary>
+        <span>这页怎么用</span>
+        <strong>3 步确认</strong>
+      </summary>
+      <section class="trust-simple-steps" aria-label="信任检查步骤">
+        <article v-for="step in simpleSteps" :key="step.title">
+          <span>{{ step.kicker }}</span>
+          <strong>{{ step.title }}</strong>
+          <p>{{ step.detail }}</p>
+        </article>
+      </section>
+    </details>
 
     <TrustBatchActionBar
+      v-if="selectedSourceIds.length"
       :source-ids="selectedSourceIds"
       :busy="busy"
       @batch-action="$emit('batchAction', $event)"
@@ -65,14 +105,44 @@
       />
     </div>
 
-    <div class="trust-secondary-grid">
-      <TrustOpenLoopPanel
-        :payload="openLoops"
-        :busy="busy"
-        @update-loop="(loopId, payload) => $emit('updateOpenLoop', loopId, payload)"
-      />
-      <TrustDiagnosticsPanel :diagnostics="diagnostics" />
-    </div>
+    <details class="trust-advanced-review">
+      <summary>
+        <div>
+          <span>高级检查</span>
+          <strong>证据报告、诊断和未闭环问题</strong>
+          <p>平时不用打开；当你想复盘原因、检查证据或处理系统诊断时再看。</p>
+        </div>
+        <span>{{ advancedItemCount }} 项</span>
+      </summary>
+
+      <div class="trust-advanced-content">
+        <TrustSessionPlanner
+          :mode="selectedSessionMode"
+          :review="review"
+          :open-loops="openLoops"
+          :diagnostics="diagnostics"
+          @mode-changed="selectedSessionMode = $event"
+        />
+
+        <TrustQuietReport :session="review.session" :report="review.report" />
+
+        <TrustReviewProgress
+          :mode="selectedSessionMode"
+          :items="sessionItems"
+          :selected-source-ids="selectedSourceIds"
+          :summary="review.summary"
+        />
+
+        <div class="trust-secondary-grid">
+          <TrustOpenLoopPanel
+            :payload="openLoops"
+            :busy="busy"
+            @update-loop="(loopId, payload) => $emit('updateOpenLoop', loopId, payload)"
+          />
+          <TrustDiagnosticsPanel :diagnostics="diagnostics" />
+        </div>
+      </div>
+    </details>
   </section>
 </template>
 
@@ -119,6 +189,28 @@ defineEmits<{
 
 const selectedSessionMode = ref<TrustReviewSessionMode>('high-risk')
 const urgentReviewCount = computed(() => props.review.summary.critical + props.review.summary.high)
+const advancedItemCount = computed(() => {
+  return props.openLoops.summary.total + (props.diagnostics?.warnings.length || 0) + (props.review.report?.sections.length || 0)
+})
+
+function selectSessionMode(mode: TrustReviewSessionMode) {
+  selectedSessionMode.value = mode
+}
+
+function quickActionClass(mode: TrustReviewSessionMode) {
+  return {
+    'memory-quick-action': true,
+    active: selectedSessionMode.value === mode,
+    primary: selectedSessionMode.value === mode && mode === 'high-risk',
+  }
+}
+
+function trustSessionModeLabel(mode: TrustReviewSessionMode) {
+  if (mode === 'high-risk') return '先确认 AI 猜测'
+  if (mode === 'open-loops') return '处理未闭环问题'
+  if (mode === 'all') return '查看全部材料'
+  return '快速清理'
+}
 
 const sessionItems = computed(() => {
   const items = props.review.items
@@ -141,51 +233,69 @@ function matchesSessionMode(item: TrustReviewItem, mode: TrustReviewSessionMode)
 
 const focusHeadline = computed(() => {
   if (props.review.summary.critical) {
-    return `先确认 ${props.review.summary.critical} 条 critical 推断`
+    return `先确认 ${props.review.summary.critical} 条最敏感的 AI 猜测`
   }
   if (props.review.summary.high) {
-    return `先扫完 ${props.review.summary.high} 条高风险判断`
+    return `先看 ${props.review.summary.high} 条最容易误导你的材料`
   }
   if (props.openLoops.summary.total) {
-    return `把 ${props.openLoops.summary.total} 个 open loop 变成下一步`
+    return `把 ${props.openLoops.summary.total} 个未闭环问题变成下一步`
   }
-  return '当前没有高压审查项'
+  return '当前没有急着处理的信任问题'
 })
 
 const focusCaption = computed(() => {
   if (urgentReviewCount.value) {
-    return '默认只展示最能帮助你做决定的信息；需要证据、历史和诊断时再展开。'
+    return '先确认这些保存理由是不是你的真实想法。确认后，未来找回和回答才不会把系统猜测当成事实。'
   }
   if (props.review.summary.unreviewed) {
-    return '剩余项目风险较低，可以按空间或关键词慢慢清理，不需要一次看完所有细节。'
+    return '剩下的内容压力不高，可以像整理知识库一样慢慢确认。'
   }
-  return '信任边界已经比较干净，后续重点是继续沉淀用户确认过的理由。'
+  return '信任边界已经比较干净，继续收集材料时再补充用户确认过的理由。'
 })
 
 const compactMetrics = computed(() => [
   {
-    label: '需判断',
+    label: '未判断',
     value: props.review.summary.unreviewed,
-    caption: `${urgentReviewCount.value} 条高优先级`,
+    caption: `${urgentReviewCount.value} 条先看`,
     tone: 'tone-critical',
   },
   {
-    label: 'AI 推断',
+    label: 'AI 猜测',
     value: props.review.summary.ai_inferred,
     caption: `${props.review.summary.user_stated} 条用户原话`,
     tone: 'tone-high',
   },
   {
-    label: 'open loop',
+    label: '未闭环',
     value: props.openLoops.summary.total,
-    caption: `${props.openLoops.summary.by_state.next || 0} 个下一步`,
+    caption: `${props.openLoops.summary.by_state.next || 0} 个已成下一步`,
     tone: 'tone-loop',
   },
   {
-    label: '已审查',
-    value: props.diagnostics?.history_count || 0,
-    caption: '可追溯记录',
+    label: '已确认',
+    value: props.review.summary.confirmed + props.review.summary.rewritten,
+    caption: `${props.diagnostics?.history_count || 0} 条记录`,
     tone: 'tone-history',
+  },
+])
+
+const simpleSteps = computed(() => [
+  {
+    kicker: '第一步',
+    title: '看系统猜了什么',
+    detail: '左侧只列需要你确认的材料，不先展开全部证据。',
+  },
+  {
+    kicker: '第二步',
+    title: '确认、改写或拒绝',
+    detail: '右侧给出当前材料和判断按钮，拿不准再展开证据。',
+  },
+  {
+    kicker: '结果',
+    title: '以后找回更可靠',
+    detail: '确认过的理由会进入记忆，AI 猜测会继续保持标记。',
   },
 ])
 </script>
