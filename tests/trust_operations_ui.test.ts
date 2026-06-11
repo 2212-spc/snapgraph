@@ -97,3 +97,20 @@ test('Trust Center reduces information pressure with compact focus and progressi
   assert.match(styles, /\.trust-review-compact-meta/)
   assert.match(styles, /\.trust-diagnostics-summary/)
 })
+
+test('Trust Center defines session types and shared decision copy helpers', () => {
+  const types = read('frontend/src/components/trustCenterTypes.ts')
+  const copy = read('frontend/src/components/trustCenterCopy.ts')
+
+  assert.match(types, /TrustReviewSessionMode/)
+  assert.match(types, /TrustDecisionOption/)
+  assert.match(types, /TrustReviewFocus/)
+  assert.match(types, /TrustSignals/)
+  assert.match(copy, /riskToneLabel/)
+  assert.match(copy, /boundaryLabel/)
+  assert.match(copy, /reviewStatusLabel/)
+  assert.match(copy, /decisionActionLabel/)
+  assert.match(copy, /sessionModeLabel/)
+  assert.match(copy, /sessionModeDescription/)
+  assert.match(copy, /confidenceLabel/)
+})
