@@ -32,6 +32,8 @@
       @mode-changed="selectedSessionMode = $event"
     />
 
+    <TrustQuietReport :session="review.session" :report="review.report" />
+
     <TrustReviewProgress
       :mode="selectedSessionMode"
       :items="sessionItems"
@@ -79,6 +81,7 @@ import { computed, ref } from 'vue'
 import TrustBatchActionBar from './TrustBatchActionBar.vue'
 import TrustDiagnosticsPanel from './TrustDiagnosticsPanel.vue'
 import TrustOpenLoopPanel from './TrustOpenLoopPanel.vue'
+import TrustQuietReport from './TrustQuietReport.vue'
 import TrustReviewProgress from './TrustReviewProgress.vue'
 import TrustReviewDetail from './TrustReviewDetail.vue'
 import TrustReviewInbox from './TrustReviewInbox.vue'
