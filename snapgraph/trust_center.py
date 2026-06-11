@@ -365,6 +365,8 @@ def _source_rows(workspace: Workspace) -> list[_SourceProjection]:
 
 def _review_item(source: _SourceProjection, evidence_count: int, topic_refs: list[dict]) -> dict:
     risk = _risk_level(source, evidence_count=evidence_count)
+    risk_reasons = _risk_reasons(source, risk, evidence_count)
+    trust_signals = _trust_signals(source, risk, evidence_count, topic_refs)
     return {
         "source_id": source.source_id,
         "title": source.title,
@@ -385,6 +387,10 @@ def _review_item(source: _SourceProjection, evidence_count: int, topic_refs: lis
         "reviewed_at": source.reviewed_at,
         "risk_level": risk,
         "recommended_action": _recommended_action(source, risk),
+        "risk_reasons": risk_reasons,
+        "decision_options": _decision_options(source, risk),
+        "review_focus": _review_focus(source, risk, evidence_count, risk_reasons),
+        "trust_signals": trust_signals,
         "evidence_count": evidence_count,
         "topic_refs": topic_refs,
         "has_open_loops": bool(source.open_loops),
@@ -414,6 +420,146 @@ def _recommended_action(source: _SourceProjection, risk: str) -> str:
     if source.open_loops and risk in {"critical", "high", "medium"}:
         return "inspect_open_loops"
     return "monitor"
+
+
+def _risk_reasons(source: _SourceProjection, risk: str, evidence_count: int) -> list[str]:
+    reasons: list[str] = []
+    if source.why_saved_status == "AI-inferred":
+        reasons.append("saved reason is AI-inferred")
+    elif source.why_saved_status == "user-stated":
+        reasons.append("saved reason was user-stated")
+    else:
+        reasons.append("saved reason boundary is unknown")
+    if source.review_status == "unreviewed":
+        reasons.append("review status is still unreviewed")
+    elif source.review_status == "deferred":
+        reasons.append("previous review was deferred")
+    elif source.review_status == "rejected":
+        reasons.append("previous review rejected this inference")
+    if source.confidence < 0.55:
+        reasons.append("confidence is below 55 percent")
+    elif source.confidence < 0.75:
+        reasons.append("confidence is moderate")
+    if source.open_loops:
+        reasons.append(f"{len(source.open_loops)} open loop remains connected")
+    if evidence_count == 0:
+        reasons.append("no graph evidence path is attached")
+    elif evidence_count == 1:
+        reasons.append("one graph evidence path is attached")
+    else:
+        reasons.append(f"{evidence_count} graph evidence paths are attached")
+    if risk in {"critical", "high"} and not source.review_note:
+        reasons.append("no user review note has been recorded")
+    return reasons
+
+
+def _decision_options(source: _SourceProjection, risk: str) -> list[dict]:
+    confirm_description = "Accept the current saved reason as representing the user's intent."
+    if source.why_saved_status == "AI-inferred":
+        confirm_description = "Confirm that this AI-inferred reason matches the user's real intent."
+    rewrite_description = "Replace the current reason with a user-approved explanation."
+    reject_description = "Mark this inference as unsafe to use as the user's intent."
+    defer_description = "Keep it in the queue because more evidence or user context is needed."
+    if risk == "critical":
+        defer_description = "Defer only if the user cannot decide now; this item should stay visible."
+    return [
+        {
+            "action": "confirmed",
+            "label": "Confirm",
+            "tone": "positive",
+            "description": confirm_description,
+            "requires_note": False,
+            "requires_rewrite": False,
+        },
+        {
+            "action": "rewritten",
+            "label": "Rewrite",
+            "tone": "constructive",
+            "description": rewrite_description,
+            "requires_note": False,
+            "requires_rewrite": True,
+        },
+        {
+            "action": "rejected",
+            "label": "Reject",
+            "tone": "danger",
+            "description": reject_description,
+            "requires_note": risk in {"critical", "high"},
+            "requires_rewrite": False,
+        },
+        {
+            "action": "deferred",
+            "label": "Defer",
+            "tone": "neutral",
+            "description": defer_description,
+            "requires_note": risk == "critical",
+            "requires_rewrite": False,
+        },
+    ]
+
+
+def _review_focus(
+    source: _SourceProjection,
+    risk: str,
+    evidence_count: int,
+    risk_reasons: list[str],
+) -> dict:
+    if source.review_status == "deferred":
+        return {
+            "headline": "Resume the deferred decision",
+            "detail": "This item was already postponed, so the next useful step is to decide whether new context is enough.",
+            "primary_action": "resume_review",
+            "evidence_prompt": "Compare the previous note with the current evidence before deciding.",
+        }
+    if source.why_saved_status == "AI-inferred" and source.review_status == "unreviewed":
+        return {
+            "headline": "Validate the AI-inferred reason",
+            "detail": risk_reasons[0] if risk_reasons else "The item needs a user-trust decision.",
+            "primary_action": "review_ai_inference",
+            "evidence_prompt": "Check whether the evidence path supports the stated intent.",
+        }
+    if source.open_loops:
+        return {
+            "headline": "Turn the open loop into a next step",
+            "detail": "The saved material still carries unresolved follow-up work.",
+            "primary_action": "inspect_open_loops",
+            "evidence_prompt": "Review the loop text and decide whether it is still active.",
+        }
+    if evidence_count == 0:
+        return {
+            "headline": "Check traceability before trusting",
+            "detail": "This item does not yet expose a graph evidence path.",
+            "primary_action": "inspect_evidence",
+            "evidence_prompt": "Confirm whether the source itself is enough or more links are needed.",
+        }
+    return {
+        "headline": "Monitor the trusted context",
+        "detail": "No urgent trust action is required, but the context remains traceable.",
+        "primary_action": "monitor",
+        "evidence_prompt": "Keep the evidence path available for future recall.",
+    }
+
+
+def _trust_signals(
+    source: _SourceProjection,
+    risk: str,
+    evidence_count: int,
+    topic_refs: list[dict],
+) -> dict:
+    return {
+        "risk_level": risk,
+        "confidence": source.confidence,
+        "confidence_percent": round(source.confidence * 100),
+        "boundary": source.why_saved_status,
+        "review_status": source.review_status,
+        "evidence_count": evidence_count,
+        "topic_count": len(topic_refs),
+        "open_loop_count": len(source.open_loops),
+        "future_question_count": len(source.future_recall_questions),
+        "has_open_loops": bool(source.open_loops),
+        "has_review_note": bool(source.review_note.strip()),
+        "needs_user_decision": source.why_saved_status == "AI-inferred" and source.review_status in {"unreviewed", "deferred"},
+    }
 
 
 def _matches_filters(item: dict, filters: dict) -> bool:
