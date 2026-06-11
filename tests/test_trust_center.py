@@ -51,6 +51,48 @@ def test_trust_review_queue_exposes_session_decision_fields(
     assert any(option["requires_rewrite"] for option in item["decision_options"])
 
 
+def test_trust_review_queue_exposes_engine_3_payload(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    payload = client.get("/api/trust/review").json()
+    item = payload["items"][0]
+
+    assert payload["session"]["mode"] == "high-risk"
+    assert payload["session"]["recommended_source_ids"]
+    assert payload["session"]["next_step"]["source_id"] == item["source_id"]
+    assert payload["report"]["headline"]
+    assert payload["report"]["sections"]
+    assert item["analysis"]["trust_score"]["label"]
+    assert item["analysis"]["evidence_compression"]["supporting"]
+    assert item["analysis"]["decision_preview"]["confirmed"]["summary"]
+    assert item["analysis"]["review_path"]["steps"]
+    assert item["analysis"]["quiet_summary"]
+
+
+def test_trust_review_detail_exposes_compressed_evidence_and_preview(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+    source_id = client.get("/api/trust/review").json()["items"][0]["source_id"]
+
+    detail = client.get(f"/api/trust/review/{source_id}").json()
+
+    assert detail["analysis"]["source_id"] == source_id
+    assert detail["analysis"]["evidence_compression"]["summary"]
+    assert detail["analysis"]["decision_preview"]["rejected"]["warnings"]
+    assert detail["analysis"]["session_fit"]["reason"]
+    assert detail["analysis"]["impact_map"]["future_recall"]
+    assert detail["report_slice"]["recommended_action"]
+
+
 def test_trust_review_detail_exposes_traceability(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)

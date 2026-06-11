@@ -26,6 +26,8 @@
 
       <TrustRiskLens :item="detail.item" />
 
+      <TrustAnalysisDigest :detail="detail" />
+
       <details class="trust-detail-disclosure">
         <summary>
           <span>证据路径</span>
@@ -82,6 +84,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { boundaryLabel } from './trustCenterCopy'
+import TrustAnalysisDigest from './TrustAnalysisDigest.vue'
 import TrustDecisionCoach from './TrustDecisionCoach.vue'
 import TrustReviewSignals from './TrustReviewSignals.vue'
 import TrustRiskLens from './TrustRiskLens.vue'

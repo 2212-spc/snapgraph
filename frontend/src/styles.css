@@ -7805,6 +7805,125 @@ button:not(:disabled):hover {
   margin: 0;
 }
 
+.trust-quiet-report,
+.trust-analysis-digest {
+  border: 1px solid rgba(55, 49, 42, 0.11);
+  background: rgba(255, 252, 246, 0.68);
+  border-radius: 8px;
+  padding: 0.8rem;
+}
+
+.trust-quiet-report {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.trust-quiet-report > div:first-child,
+.trust-analysis-digest-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: flex-start;
+}
+
+.trust-quiet-report strong,
+.trust-analysis-digest strong {
+  display: block;
+  color: #2f2a24;
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.trust-quiet-report p,
+.trust-analysis-digest p {
+  margin: 0.25rem 0 0;
+  color: #6f665d;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.trust-quiet-report details,
+.trust-analysis-digest details {
+  border-top: 1px solid rgba(55, 49, 42, 0.1);
+  padding-top: 0.55rem;
+}
+
+.trust-quiet-report summary,
+.trust-analysis-digest summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #5f574e;
+  font-size: 0.82rem;
+  list-style: none;
+}
+
+.trust-quiet-report summary::-webkit-details-marker,
+.trust-analysis-digest summary::-webkit-details-marker {
+  display: none;
+}
+
+.trust-quiet-report-grid,
+.trust-analysis-impact-list,
+.trust-analysis-evidence-columns {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+
+.trust-quiet-report-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.trust-quiet-report-grid article,
+.trust-analysis-impact-list article,
+.trust-analysis-evidence-columns div {
+  border: 1px solid rgba(55, 49, 42, 0.09);
+  background: rgba(255, 255, 255, 0.62);
+  border-radius: 7px;
+  padding: 0.65rem;
+}
+
+.trust-quiet-action-list {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.trust-analysis-digest {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.trust-analysis-digest-head > span {
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0.25rem 0.5rem;
+  color: #5d5147;
+  background: rgba(138, 116, 87, 0.12);
+  font-size: 0.76rem;
+}
+
+.trust-analysis-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.trust-analysis-pills span,
+.trust-quiet-report-grid span,
+.trust-analysis-impact-list span,
+.trust-analysis-evidence-columns span {
+  color: #887b6e;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.trust-analysis-evidence-columns {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
 @media (max-width: 980px) {
   .trust-summary-grid,
   .trust-focus-strip,

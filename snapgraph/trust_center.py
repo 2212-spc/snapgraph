@@ -10,6 +10,12 @@ from datetime import datetime, timezone
 
 from .ingest import review_ai_inference
 from .models import DEFAULT_GRAPH_SPACE_ID
+from .trust_engine import (
+    build_detail_report_slice,
+    build_item_analysis,
+    build_report_payload,
+    build_session_payload,
+)
 from .workspace import Workspace
 
 
@@ -50,10 +56,15 @@ def list_review_items(workspace: Workspace, filters: dict | None = None) -> dict
     ]
     items = [_item for _item in items if _matches_filters(_item, filter_values)]
     items.sort(key=_review_sort_key)
+    for item in items:
+        item["analysis"] = build_item_analysis(item, peers=items)
+    summary = _summary(items)
     return {
         "items": items,
-        "summary": _summary(items),
+        "summary": summary,
         "filters": filter_values,
+        "session": build_session_payload(items, summary, filter_values),
+        "report": build_report_payload(items, summary, filter_values),
     }
 
 
@@ -63,14 +74,25 @@ def get_review_detail(workspace: Workspace, source_id: str) -> dict:
     if not payload["items"]:
         raise KeyError(source_id)
     item = payload["items"][0]
+    evidence_paths = _evidence_paths(workspace, source_id)
+    history = _history_rows(workspace, source_id)
     open_loops = [
         loop for loop in list_open_loops(workspace)["items"]
         if source_id in loop.get("source_ids", [])
     ]
+    analysis = build_item_analysis(
+        item,
+        evidence_paths=evidence_paths,
+        history=history,
+        open_loops=open_loops,
+        peers=payload["items"],
+    )
     return {
         "item": item,
-        "evidence_paths": _evidence_paths(workspace, source_id),
-        "history": _history_rows(workspace, source_id),
+        "analysis": analysis,
+        "report_slice": build_detail_report_slice(item, analysis),
+        "evidence_paths": evidence_paths,
+        "history": history,
         "open_loops": open_loops,
         "source_map": _source_map_summary(workspace, source_id),
     }
