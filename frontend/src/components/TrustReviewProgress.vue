@@ -1,5 +1,5 @@
 <template>
-  <section class="trust-review-progress" aria-label="Trust review progress">
+  <section class="trust-review-progress" aria-label="信任检查进度">
     <div>
       <span>本轮范围</span>
       <strong>{{ items.length }} 条</strong>
@@ -53,7 +53,7 @@ const nextStep = computed(() => {
 const nextStepDetail = computed(() => {
   if (!props.items.length) return '当前筛选没有结果，可以切到全部或收集更多材料。'
   if (selectedCount.value) return '批量动作适合确定性较高的项目，拿不准时用单条审查。'
-  if (highPressureCount.value) return '优先处理会影响未来回答可信度的 AI 推断。'
+  if (highPressureCount.value) return '优先处理会影响未来回答可信度的 AI 猜测。'
   return '剩余项目压力较低，可以按空间或关键词慢慢处理。'
 })
 </script>

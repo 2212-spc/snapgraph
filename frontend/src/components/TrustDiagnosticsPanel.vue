@@ -2,7 +2,7 @@
   <section class="trust-diagnostics-panel">
     <div class="trust-panel-head">
       <div>
-        <span class="section-kicker">Diagnostics</span>
+        <span class="section-kicker">系统检查</span>
         <h3>信任诊断</h3>
       </div>
       <strong>{{ diagnostics?.queue_total || 0 }}</strong>
@@ -17,15 +17,15 @@
         <strong>{{ diagnostics?.ai_inferred_unreviewed || 0 }}</strong>
       </div>
       <div>
-        <span>critical</span>
+        <span>必须先看</span>
         <strong>{{ diagnostics?.critical_count || 0 }}</strong>
       </div>
       <div>
-        <span>high</span>
+        <span>高优先级</span>
         <strong>{{ diagnostics?.high_count || 0 }}</strong>
       </div>
       <div>
-        <span>history</span>
+        <span>审查记录</span>
         <strong>{{ diagnostics?.history_count || 0 }}</strong>
       </div>
     </div>
@@ -55,10 +55,10 @@ const diagnosticsSummary = computed(() => {
   const diagnostics = props.diagnostics
   if (!diagnostics) return '还没有诊断数据。'
   if (diagnostics.critical_count) {
-    return `${diagnostics.critical_count} 条 critical 项需要先处理，其余诊断已收起。`
+    return `${diagnostics.critical_count} 条必须先看的项目需要处理，其余诊断已收起。`
   }
   if (diagnostics.ai_inferred_unreviewed) {
-    return `${diagnostics.ai_inferred_unreviewed} 条 AI 推断还没被用户确认。`
+    return `${diagnostics.ai_inferred_unreviewed} 条 AI 猜测还没被用户确认。`
   }
   if (diagnostics.warnings.length) {
     return '有少量诊断警告，展开后再逐条检查。'
@@ -68,10 +68,10 @@ const diagnosticsSummary = computed(() => {
 
 const diagnosticsGuidance = computed(() => {
   const diagnostics = props.diagnostics
-  if (!diagnostics) return '刷新工作台后会重新计算队列、open loop 和历史记录。'
-  if (diagnostics.critical_count) return '先回到上方高风险会话，把 critical 项处理掉。'
-  if (diagnostics.ai_inferred_unreviewed) return '这些 AI 推断不是错误，但需要用户确认后才适合长期复用。'
-  if (diagnostics.open_loop_total) return '如果没有急迫审查项，可以继续清理下方 open loop。'
+  if (!diagnostics) return '刷新后会重新计算队列、未闭环问题和历史记录。'
+  if (diagnostics.critical_count) return '先回到上方重点检查，把必须先看的项目处理掉。'
+  if (diagnostics.ai_inferred_unreviewed) return '这些 AI 猜测不是错误，但需要用户确认后才适合长期复用。'
+  if (diagnostics.open_loop_total) return '如果没有急迫审查项，可以继续清理下方未闭环问题。'
   return '当前更适合继续收集材料或从 Recall 里验证旧判断。'
 })
 </script>

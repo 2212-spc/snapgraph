@@ -2,8 +2,8 @@
   <section class="trust-decision-coach">
     <div class="trust-decision-coach-head">
       <div>
-        <span class="section-kicker">Decision Coach</span>
-        <h4>把判断写成可追溯记录</h4>
+        <span class="section-kicker">你的判断</span>
+        <h4>这条理由能不能长期保存？</h4>
       </div>
       <strong>{{ selectedActionLabel }}</strong>
     </div>
@@ -17,19 +17,27 @@
         @click="selectedAction = option.action"
       >
         <strong>{{ decisionActionLabel(option.action) }}</strong>
-        <span>{{ option.description }}</span>
       </button>
     </div>
 
-    <label class="trust-decision-field">
-      <span>审查备注</span>
-      <textarea v-model="note" placeholder="说明你为什么这样判断，后续可以回溯。" />
-    </label>
+    <p class="trust-decision-current-help">{{ selectedActionHelp }}</p>
 
-    <label class="trust-decision-field" :data-required="selectedAction === 'rewritten'">
-      <span>改写后的保存理由</span>
-      <textarea v-model="rewriteText" placeholder="如果要改写 AI 推断，在这里写成用户确认过的理由。" />
-    </label>
+    <details class="trust-decision-note-drawer" :open="needsDraftDetails">
+      <summary>
+        <span>补充说明</span>
+        <strong>{{ noteDrawerLabel }}</strong>
+      </summary>
+
+      <label class="trust-decision-field">
+        <span>审查备注</span>
+        <textarea v-model="note" placeholder="说明你为什么这样判断，后续可以回溯。" />
+      </label>
+
+      <label v-if="selectedAction === 'rewritten'" class="trust-decision-field" data-required="true">
+        <span>改写后的保存理由</span>
+        <textarea v-model="rewriteText" placeholder="如果要改写 AI 猜测，在这里写成用户确认过的理由。" />
+      </label>
+    </details>
 
     <p v-if="validationMessage" class="trust-decision-validation">{{ validationMessage }}</p>
 
@@ -44,7 +52,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { decisionActionLabel } from './trustCenterCopy'
+import { decisionActionDescription, decisionActionLabel } from './trustCenterCopy'
 import type { TrustBatchPayload, TrustReviewDetailPayload, TrustReviewStatus } from './trustCenterTypes'
 
 const props = defineProps<{
@@ -61,9 +69,16 @@ const note = ref('')
 const rewriteText = ref('')
 
 const selectedActionLabel = computed(() => decisionActionLabel(selectedAction.value))
+const selectedActionHelp = computed(() => decisionActionDescription(selectedAction.value))
 
 const selectedOption = computed(() => {
   return props.detail.item.decision_options.find((option) => option.action === selectedAction.value)
+})
+const needsDraftDetails = computed(() => Boolean(selectedOption.value?.requires_note || selectedOption.value?.requires_rewrite))
+const noteDrawerLabel = computed(() => {
+  if (selectedOption.value?.requires_rewrite) return '需要改写理由'
+  if (selectedOption.value?.requires_note) return '建议写备注'
+  return note.value ? '已有备注' : '可选'
 })
 
 const validationMessage = computed(() => {

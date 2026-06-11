@@ -1,7 +1,7 @@
 <template>
-  <section class="trust-session-planner" aria-label="Trust review session planner">
+  <section class="trust-session-planner" aria-label="信任检查方式">
     <div class="trust-session-copy">
-      <span class="section-kicker">Review Session</span>
+      <span class="section-kicker">检查方式</span>
       <h2>{{ sessionModeLabel(mode) }}</h2>
       <p>{{ sessionModeDescription(mode) }}</p>
     </div>
@@ -64,7 +64,7 @@ const modeOptions = computed(() => [
   },
   {
     id: 'open-loops' as const,
-    label: 'Open loop',
+    label: '未闭环',
     count: props.openLoops.summary.total,
   },
   {
@@ -77,15 +77,15 @@ const modeOptions = computed(() => [
 const nextStepHeadline = computed(() => {
   if (props.mode === 'high-risk' && urgentCount.value) return `先处理 ${urgentCount.value} 条高优先级判断`
   if (props.mode === 'quick-clear') return '用低压力项目降低队列噪音'
-  if (props.mode === 'open-loops') return `把 ${props.openLoops.summary.total} 个悬而未决问题变成下一步`
+  if (props.mode === 'open-loops') return `把 ${props.openLoops.summary.total} 个未闭环问题变成下一步`
   if (props.diagnostics?.warnings.length) return '先扫一眼诊断警告'
   return '从第一条待审查材料开始'
 })
 
 const nextStepDetail = computed(() => {
-  if (props.mode === 'high-risk') return '优先看 AI 推断、低可信度和缺少用户确认的材料。'
+  if (props.mode === 'high-risk') return '优先看 AI 猜测、低可信度和缺少用户确认的材料。'
   if (props.mode === 'quick-clear') return '适合一次处理多条低风险记录，但仍保留改写和拒绝出口。'
-  if (props.mode === 'open-loops') return '先判断问题是否还有效，再决定 next、resolved 或 dismissed。'
+  if (props.mode === 'open-loops') return '先判断问题是否还有效，再决定变成下一步、已解决或不再处理。'
   return '完整模式不会隐藏信息，适合最终复盘或提交前检查。'
 })
 </script>
