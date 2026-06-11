@@ -160,3 +160,22 @@ test('Trust Center adds reusable signals, risk lens, and decision coach', () => 
   assert.match(styles, /\.trust-risk-lens/)
   assert.match(styles, /\.trust-decision-coach/)
 })
+
+test('Trust Center secondary panels include guidance and responsive session layout', () => {
+  const batch = read('frontend/src/components/TrustBatchActionBar.vue')
+  const loops = read('frontend/src/components/TrustOpenLoopPanel.vue')
+  const diagnostics = read('frontend/src/components/TrustDiagnosticsPanel.vue')
+  const styles = read('frontend/src/styles.css')
+
+  assert.match(batch, /trust-batch-guidance/)
+  assert.match(batch, /batchGuidance/)
+  assert.match(loops, /trust-loop-priority-note/)
+  assert.match(loops, /priorityNote/)
+  assert.match(diagnostics, /trust-diagnostics-guidance/)
+  assert.match(diagnostics, /diagnosticsGuidance/)
+  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.trust-session-planner/)
+  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.trust-decision-options/)
+  assert.match(styles, /\.trust-batch-guidance/)
+  assert.match(styles, /\.trust-loop-priority-note/)
+  assert.match(styles, /\.trust-diagnostics-guidance/)
+})

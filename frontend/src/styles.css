@@ -7283,6 +7283,15 @@ button:not(:disabled):hover {
   margin-top: 2px;
 }
 
+.trust-batch-guidance,
+.trust-loop-priority-note,
+.trust-diagnostics-guidance {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .trust-batch-bar input,
 .trust-filter-row input,
 .trust-filter-row select,
@@ -7759,6 +7768,12 @@ button:not(:disabled):hover {
   margin-bottom: 10px;
 }
 
+.trust-diagnostics-guidance {
+  border-left: 3px solid rgba(53, 99, 91, 0.34);
+  padding-left: 8px;
+  margin-bottom: 10px;
+}
+
 .trust-open-loop-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -7775,6 +7790,14 @@ button:not(:disabled):hover {
   border-radius: 8px;
   padding: 9px;
   background: rgba(250, 250, 246, 0.68);
+}
+
+.trust-loop-priority-note {
+  border: 1px dashed rgba(44, 53, 68, 0.18);
+  border-radius: 8px;
+  background: rgba(250, 250, 246, 0.72);
+  padding: 8px;
+  margin-bottom: 10px;
 }
 
 .trust-empty {
@@ -7803,6 +7826,24 @@ button:not(:disabled):hover {
   .trust-loop-state-grid,
   .trust-diagnostics-grid {
     grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .trust-session-planner,
+  .trust-review-progress {
+    grid-template-columns: 1fr;
+  }
+
+  .trust-session-modes,
+  .trust-decision-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trust-review-signals[data-compact="false"],
+  .trust-risk-lens,
+  .trust-decision-coach {
+    padding: 9px;
   }
 }
 

@@ -9,6 +9,7 @@
     </div>
 
     <p class="trust-diagnostics-summary">{{ diagnosticsSummary }}</p>
+    <p class="trust-diagnostics-guidance">{{ diagnosticsGuidance }}</p>
 
     <div class="trust-diagnostics-grid">
       <div>
@@ -63,5 +64,14 @@ const diagnosticsSummary = computed(() => {
     return '有少量诊断警告，展开后再逐条检查。'
   }
   return '当前没有诊断警告，信任边界状态稳定。'
+})
+
+const diagnosticsGuidance = computed(() => {
+  const diagnostics = props.diagnostics
+  if (!diagnostics) return '刷新工作台后会重新计算队列、open loop 和历史记录。'
+  if (diagnostics.critical_count) return '先回到上方高风险会话，把 critical 项处理掉。'
+  if (diagnostics.ai_inferred_unreviewed) return '这些 AI 推断不是错误，但需要用户确认后才适合长期复用。'
+  if (diagnostics.open_loop_total) return '如果没有急迫审查项，可以继续清理下方 open loop。'
+  return '当前更适合继续收集材料或从 Recall 里验证旧判断。'
 })
 </script>
