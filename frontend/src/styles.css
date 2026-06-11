@@ -7109,6 +7109,103 @@ button:not(:disabled):hover {
   min-width: 0;
 }
 
+.trust-session-planner {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.4fr) minmax(220px, 0.8fr);
+  gap: 10px;
+  align-items: stretch;
+  border: 1px solid rgba(44, 53, 68, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 10px;
+}
+
+.trust-session-copy,
+.trust-session-next-step {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.trust-session-copy h2,
+.trust-session-next-step strong {
+  margin: 0;
+  font-family: var(--snap-title);
+  font-size: 1.03rem;
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.trust-session-copy p,
+.trust-session-next-step p,
+.trust-review-progress p {
+  margin: 0;
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+.trust-session-modes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  min-width: 0;
+}
+
+.trust-session-modes button {
+  border: 1px solid rgba(44, 53, 68, 0.12);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--paper) 88%, white);
+  color: var(--foreground);
+  padding: 9px;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.trust-session-modes button.active {
+  border-color: rgba(53, 99, 91, 0.44);
+  background: color-mix(in srgb, var(--secondary) 78%, white);
+  box-shadow: inset 0 0 0 1px rgba(53, 99, 91, 0.14);
+}
+
+.trust-session-modes strong {
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.trust-session-modes span,
+.trust-review-progress span,
+.trust-session-next-step span {
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trust-review-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trust-review-progress > div {
+  border: 1px solid rgba(44, 53, 68, 0.1);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--paper) 86%, white);
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trust-review-progress strong {
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
 .trust-summary-grid article {
   min-height: 96px;
   border: 1px solid var(--line);
