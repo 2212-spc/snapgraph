@@ -1,8 +1,50 @@
 <template>
   <section class="recall-home" :class="{ 'has-result': showResult }">
     <div class="recall-hero" :class="{ 'is-compact': showResult }">
+<<<<<<< Updated upstream
       <h1>{{ showResult ? displayQuestion || '新对话' : '今天想学什么？' }}</h1>
       <p v-if="showResult" class="hero-copy">{{ heroCopy }}</p>
+=======
+      <h1>{{ showResult ? displayQuestion || '新对话' : '找回当时为什么在意它' }}</h1>
+      <p class="hero-copy">{{ heroCopy }}</p>
+      <div v-if="showResult && busy" class="result-stream-status" aria-live="polite">
+        <span aria-hidden="true"></span>
+        {{ statusText }}
+      </div>
+
+      <div v-if="!showResult" class="recall-mode-switch" aria-label="选择找回模式">
+        <button
+          v-for="item in modeOptions"
+          :key="item.id"
+          type="button"
+          :class="{ active: mode === item.id }"
+          :disabled="busy"
+          @click="$emit('modeChanged', item.id)"
+        >
+          <component :is="item.icon" :size="15" />
+          <span>{{ item.label }}</span>
+          <small>{{ item.detail }}</small>
+        </button>
+      </div>
+
+      <form class="recall-box recall-command" @submit.prevent="submit">
+        <div class="composer-input-wrap">
+          <textarea
+            v-model="question"
+            :disabled="busy"
+            :placeholder="placeholderText"
+            rows="1"
+            autofocus
+          />
+        </div>
+        <div class="composer-send-row">
+          <span v-if="busy && !showResult" class="composer-status">{{ statusText }}</span>
+          <button class="primary-button recall-submit" :disabled="busy || !question.trim()" title="Send">
+            <ArrowUp :size="15" />
+          </button>
+        </div>
+      </form>
+>>>>>>> Stashed changes
 
       <div v-if="!showResult" class="starter-grid">
         <div v-if="!showResult" class="prompt-row example-chip-row">
@@ -102,6 +144,11 @@ const heroCopy = computed(() => showResult.value
   ? '继续从本地材料、保存理由和图谱路径里追问这个判断。'
   : '选择一个方向开始，或者直接输入你想理解、求解、画图、练习的问题。')
 const displayQuestion = computed(() => question.value.trim() || props.currentQuestion || props.result?.question || '')
+const placeholderText = computed(() => {
+  if (props.mode === 'files') return '例如：有哪些证据说明我当时在关注这个问题？'
+  if (props.mode === 'answer') return '例如：根据这些材料，帮我整理一个可执行判断'
+  return '例如：我之前为什么觉得这个方向值得做？'
+})
 const statusText = computed(() => props.busy ? props.busyStage || '正在回答。' : '按回车或点击发送。')
 
 watch(
