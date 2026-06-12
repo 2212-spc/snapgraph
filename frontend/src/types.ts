@@ -11,7 +11,16 @@ export type ProviderConfig = {
   provider: string
   model?: string
   has_api_key?: boolean
-  runtime?: { model_used?: string }
+  runtime?: {
+    configured_provider?: string
+    provider_used?: string
+    model_used?: string
+    api_key_env?: string
+    has_api_key?: boolean
+    provider_ready?: boolean
+    fallback_used?: boolean
+    provider_error?: string
+  }
 }
 
 export type GraphSpace = {
@@ -44,6 +53,9 @@ export type Source = {
   graph_space_id: string
   space_name: string
   confidence?: number
+  review_status?: string
+  review_note?: string
+  reviewed_at?: string
   routing_status?: string
   routing_reason?: string
   path?: string
@@ -59,12 +71,16 @@ export type EvidenceCard = {
   open_loops: string[]
   future_recall_questions: string[]
   source_excerpt: string
+  review_status?: string
+  review_note?: string
+  reviewed_at?: string
 }
 
 export type FocusGraph = {
   nodes: Array<{ id: string; type: string; label: string; graph_space_id?: string; status?: string }>
   edges: Array<{ id: string; source: string; target: string; relation: string; evidence_source_id?: string }>
   evidence_cards: EvidenceCard[]
+  local_files?: LocalFileResult[]
   open_loops: string[]
   confidence_summary: {
     source_count: number
@@ -74,6 +90,86 @@ export type FocusGraph = {
   }
 }
 
+export type RecallEvidenceKind = 'user_anchor' | 'source' | 'ai_inference' | 'graph_path'
+
+export type RecallEvidenceTone = 'trusted' | 'support' | 'review' | 'graph'
+
+export type RecallEvidenceItem = {
+  id: string
+  kind: RecallEvidenceKind
+  tone: RecallEvidenceTone
+  title: string
+  body: string
+  source_id: string
+  space_name: string
+  review_status: string
+  metadata?: {
+    why_saved_status?: string
+    related_project?: string
+    open_loops?: string[]
+    future_recall_questions?: string[]
+    source_page?: string
+    path?: string
+  }
+}
+
+export type RecallTrustDebtItem = {
+  id: string
+  label: string
+  detail: string
+  severity: 'low' | 'medium' | 'high'
+}
+
+export type RecallActionKind = 'ask' | 'review' | 'save' | 'open_loop' | 'collect'
+
+export type RecallActionCard = {
+  id: string
+  kind: RecallActionKind
+  label: string
+  detail: string
+  question: string
+  source_id: string
+  space_id: string
+}
+
+export type RecallProjection = {
+  judgment: {
+    title: string
+    summary: string
+    confidence_label: 'strong' | 'mixed' | 'weak'
+    source: string
+    space_id: string
+    space_name: string
+  }
+  evidence_ladder: RecallEvidenceItem[]
+  trust_debt: {
+    level: 'low' | 'medium' | 'high'
+    items: RecallTrustDebtItem[]
+    summary: string
+  }
+  actions: RecallActionCard[]
+  write_back_preview: {
+    judgment: string
+    source_ids: string[]
+    next_step: string
+    graph_paths: string[]
+    diagnostics?: Record<string, unknown>
+  }
+}
+
+export type LocalFileResult = {
+  source_id: string
+  title: string
+  path: string
+  raw_path: string
+  open_target: 'raw' | 'source_page'
+  why_saved?: string
+  why_saved_status?: string
+  space_name?: string
+  source_excerpt?: string
+  match_reason?: string
+}
+
 export type AskResponse = {
   question: string
   text: string
@@ -81,7 +177,11 @@ export type AskResponse = {
   contexts: EvidenceCard[]
   graph_paths: string[]
   focus_graph: FocusGraph
+  recall_projection?: RecallProjection
+  local_files?: LocalFileResult[]
 }
+
+export type RecallMode = 'auto' | 'files' | 'answer'
 
 export type RecallStage = {
   id: string

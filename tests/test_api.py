@@ -80,7 +80,8 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
     )
 
     assert response.status_code == 200
-    text = response.json()["text"]
+    payload = response.json()
+    text = payload["text"]
     for heading in [
         "## 结论",
         "## 找回的原话",
@@ -93,6 +94,67 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
     ]:
         assert heading in text
     assert text.index("## 结论") < text.index("## 找回的原话")
+
+
+    projection = payload["recall_projection"]
+    assert projection["judgment"]["summary"]
+    assert projection["evidence_ladder"]
+    assert projection["trust_debt"]["level"] in {"low", "medium", "high"}
+    assert projection["actions"]
+    assert projection["write_back_preview"]["source_ids"]
+
+
+def test_api_ask_exposes_clickable_local_files(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    response = client.post(
+        "/api/ask",
+        json={"question": "我为什么要从 LLM Wiki 开始？", "save": False},
+    )
+
+    assert response.status_code == 200
+    local_files = response.json()["local_files"]
+    assert local_files
+    first = local_files[0]
+    assert first["source_id"]
+    assert first["title"]
+    assert first["path"].startswith("wiki/sources/")
+    assert first["raw_path"].startswith("raw/")
+    assert first["open_target"] in {"raw", "source_page"}
+    assert first["why_saved_status"] in {"user-stated", "AI-inferred", "unknown"}
+
+
+def test_api_open_local_file_is_workspace_scoped(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    opened: list[list[str]] = []
+    client = TestClient(app)
+    client.post("/api/demo/load")
+    ask_response = client.post(
+        "/api/ask",
+        json={"question": "我为什么要从 LLM Wiki 开始？", "save": False},
+    )
+    local_file = ask_response.json()["local_files"][0]
+
+    def fake_popen(command: list[str]) -> object:
+        opened.append(command)
+        return object()
+
+    monkeypatch.setattr("snapgraph.api.subprocess.Popen", fake_popen)
+    open_response = client.post(
+        "/api/open-local",
+        json={"source_id": local_file["source_id"], "target": "raw"},
+    )
+    outside_response = client.post(
+        "/api/open-local",
+        json={"path": "../outside.md"},
+    )
+
+    assert open_response.status_code == 200
+    assert open_response.json()["opened_path"].startswith("raw/")
+    assert opened
+    assert outside_response.status_code == 400
 
 
 def test_api_ask_accepts_current_batch_context_source_ids(tmp_path: Path, monkeypatch) -> None:
@@ -183,6 +245,9 @@ def test_api_ask_stream_emits_agent_stages_and_final_answer(tmp_path: Path, monk
     assert '"id": "write"' in body
     assert "event: final" in body
     assert "## AI 探索回应" in body
+
+
+    assert '"recall_projection"' in body
 
 
 def test_api_reports_provider_metadata(tmp_path: Path, monkeypatch) -> None:
@@ -318,6 +383,83 @@ def test_api_can_update_source_title(tmp_path: Path, monkeypatch) -> None:
     assert response.status_code == 200
     detail = response.json()["detail"]
     assert detail["title"] == "用户确认后的保存名"
+
+
+def test_api_can_review_ai_inferred_context(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# AI Draft\n\nThis source needs review.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    response = client.patch(
+        f"/api/sources/{source_id}/review",
+        json={
+            "review_status": "confirmed",
+            "review_note": "用户确认：这个推断符合当时的保存意图。",
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()["detail"]
+    assert detail["why_saved_status"] == "user-stated"
+    assert detail["review_status"] == "confirmed"
+    assert detail["review_note"] == "用户确认：这个推断符合当时的保存意图。"
+    assert detail["reviewed_at"]
+
+
+def test_api_can_rewrite_and_reject_ai_inferred_context(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Rewrite Me\n\nThis source needs a human reason.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    rewrite = client.patch(
+        f"/api/sources/{source_id}/review",
+        json={
+            "review_status": "rewritten",
+            "why_saved": "我保存它是因为它能提醒我修正 AI 推断。",
+            "review_note": "改写为用户原话。",
+        },
+    )
+
+    assert rewrite.status_code == 200
+    rewritten_detail = rewrite.json()["detail"]
+    assert rewritten_detail["why_saved_status"] == "user-stated"
+    assert rewritten_detail["why_saved"] == "我保存它是因为它能提醒我修正 AI 推断。"
+    assert rewritten_detail["review_status"] == "rewritten"
+
+    reject = client.patch(
+        f"/api/sources/{source_id}/review",
+        json={"review_status": "rejected", "review_note": "这个推断不是我的真实意图。"},
+    )
+
+    assert reject.status_code == 200
+    rejected_detail = reject.json()["detail"]
+    assert rejected_detail["review_status"] == "rejected"
+    assert rejected_detail["review_note"] == "这个推断不是我的真实意图。"
+
+
+def test_api_rejects_invalid_review_status(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/ingest",
+        files={"file": ("note.md", b"# Bad Review\n\nInvalid review status.\n", "text/markdown")},
+    )
+    source_id = upload.json()["source_id"]
+
+    response = client.patch(
+        f"/api/sources/{source_id}/review",
+        json={"review_status": "made-up"},
+    )
+
+    assert response.status_code == 400
 
 
 def test_api_ingest_reuses_exact_duplicate_in_same_manual_space(

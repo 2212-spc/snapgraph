@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -42,13 +44,14 @@ from .graph_store import (
     update_graph_edge,
     update_graph_theme,
 )
-from .ingest import ingest_source, update_cognitive_context, update_source_title
+from .ingest import ingest_source, review_ai_inference, update_cognitive_context, update_source_title
 from .linting import lint_workspace
 from .llm import MockLLM
 from .llm_providers import provider_metadata, resolve_llm_with_metadata
 from .models import AnswerResult, DEFAULT_GRAPH_SPACE_ID, INBOX_GRAPH_SPACE_ID
 from .report import write_graph_report
 from .retrieval import retrieve_for_question
+from .recall_projection import build_recall_result_projection
 from .spaces import (
     accept_suggestion,
     create_graph_space,
@@ -59,6 +62,15 @@ from .spaces import (
     move_source_to_space,
     reject_suggestion,
     update_graph_space,
+)
+from .trust_center import (
+    batch_review,
+    get_review_detail,
+    list_open_loops,
+    list_review_items,
+    trust_diagnostics,
+    trust_summary,
+    update_open_loop_state,
 )
 from .wiki import question_pages, source_pages
 from .workspace import Workspace, create_workspace, get_workspace
@@ -242,6 +254,9 @@ def _sources_payload(ws: Workspace, space_id: str | None = None):
                 c.open_loops_json,
                 c.future_recall_questions_json,
                 c.confidence,
+                COALESCE(c.review_status, 'unreviewed'),
+                COALESCE(c.review_note, ''),
+                COALESCE(c.reviewed_at, ''),
                 COALESCE(m.routing_status, ''),
                 COALESCE(m.routing_reason, '')
             FROM sources s
@@ -271,8 +286,11 @@ def _sources_payload(ws: Workspace, space_id: str | None = None):
             "open_loops": _loads_json_list(row[11]),
             "future_recall_questions": _loads_json_list(row[12]),
             "confidence": row[13] if row[13] is not None else 0.0,
-            "routing_status": row[14] or "",
-            "routing_reason": row[15] or "",
+            "review_status": row[14] or "unreviewed",
+            "review_note": row[15] or "",
+            "reviewed_at": row[16] or "",
+            "routing_status": row[17] or "",
+            "routing_reason": row[18] or "",
             "path": ws.relative_to_workspace(page_path),
         })
     return sources
@@ -322,6 +340,101 @@ def api_source_title_update(source_id: str, payload: dict):
         raise HTTPException(400, str(exc)) from exc
     detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
     return {"detail": detail or {}}
+
+
+@app.patch("/api/sources/{source_id}/review")
+def api_source_review_update(source_id: str, payload: dict):
+    """Persist a user review decision for an AI-inferred context."""
+    try:
+        review_ai_inference(
+            _workspace(),
+            source_id,
+            review_status=str(payload.get("review_status", "")),
+            review_note=str(payload.get("review_note", "")),
+            why_saved=payload.get("why_saved"),
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    detail = next((source for source in api_sources("all") if source["id"] == source_id), None)
+    return {"detail": detail or {}}
+
+
+# 鈹€鈹€ Trust operations 鈹€鈹€
+
+@app.get("/api/trust/review")
+def api_trust_review(
+    status: str = "",
+    risk: str = "",
+    space_id: str = "",
+    q: str = "",
+    inferred: str = "",
+    has_open_loops: bool | None = None,
+):
+    return list_review_items(
+        _workspace(),
+        {
+            "status": status,
+            "risk": risk,
+            "space_id": space_id,
+            "q": q,
+            "inferred": inferred,
+            "has_open_loops": has_open_loops,
+        },
+    )
+
+
+@app.post("/api/trust/review/batch")
+def api_trust_review_batch(payload: dict):
+    try:
+        return batch_review(
+            _workspace(),
+            source_ids=payload.get("source_ids") or [],
+            action=str(payload.get("action") or ""),
+            note=str(payload.get("note") or ""),
+            rewrites=payload.get("rewrites") or {},
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/trust/review/{source_id}")
+def api_trust_review_detail(source_id: str):
+    try:
+        return get_review_detail(_workspace(), source_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Source not found") from exc
+
+
+@app.get("/api/trust/summary")
+def api_trust_summary():
+    return trust_summary(_workspace())
+
+
+@app.get("/api/trust/diagnostics")
+def api_trust_diagnostics():
+    return trust_diagnostics(_workspace())
+
+
+@app.get("/api/trust/open-loops")
+def api_trust_open_loops(state: str = ""):
+    return list_open_loops(_workspace(), state=state or None)
+
+
+@app.patch("/api/trust/open-loops/{loop_id}")
+def api_trust_open_loop_update(loop_id: str, payload: dict):
+    try:
+        return update_open_loop_state(
+            _workspace(),
+            loop_id,
+            state=str(payload.get("state") or ""),
+            note=str(payload.get("note") or ""),
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "Open loop not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/ingest")
@@ -666,7 +779,15 @@ def api_ask_stream(payload: dict):
                 "detail": f"{len(retrieval.graph_paths)} 条连接路径",
             },
         )
-        yield _sse("stage", {"id": "write", "label": "生成 AI 回复", "status": "active", "detail": "Qwen 正在组织回答"})
+        yield _sse(
+            "stage",
+            {
+                "id": "write",
+                "label": "生成 AI 回复",
+                "status": "active",
+                "detail": _provider_action_label(provider_metadata(ws).as_dict()),
+            },
+        )
 
         try:
             llm, metadata = resolve_llm_with_metadata(ws)
@@ -715,6 +836,26 @@ def api_ask_stream(payload: dict):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/open-local")
+def api_open_local(payload: dict):
+    ws = _workspace()
+    source_id = str(payload.get("source_id") or "").strip()
+    target = str(payload.get("target") or payload.get("open_target") or "raw").strip()
+    if source_id:
+        local_file = _local_file_for_source(ws, source_id)
+        if not local_file:
+            raise HTTPException(404, "Source not found")
+        relative_path = local_file["path"] if target == "source_page" else local_file["raw_path"]
+    else:
+        relative_path = str(payload.get("path") or "").strip()
+    path = _workspace_file_path(ws, relative_path)
+    _open_path(path)
+    return {
+        "opened_path": ws.relative_to_workspace(path),
+        "absolute_path": str(path),
+    }
 
 
 # ── Report ──
@@ -859,6 +1000,15 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _provider_action_label(metadata: dict) -> str:
+    provider = metadata.get("provider_used") or metadata.get("configured_provider") or "mock"
+    model = metadata.get("model_used") or ""
+    if provider == "mock":
+        return "MockLLM 正在按本地证据组织回答。"
+    label = f"{provider} · {model}" if model else str(provider)
+    return f"{label} 正在组织回答。"
+
+
 def _context_dicts(retrieval) -> list[dict]:
     return [
         {
@@ -905,6 +1055,81 @@ def _contexts_payload(ws: Workspace, retrieval) -> list[dict]:
     ]
 
 
+def _local_files_payload(ws: Workspace, retrieval) -> list[dict]:
+    files = []
+    for context in retrieval.contexts:
+        local_file = _local_file_for_source(ws, context.source_id)
+        if not local_file:
+            continue
+        reason = _local_file_reason(context)
+        files.append({
+            **local_file,
+            "why_saved": context.why_saved,
+            "why_saved_status": context.why_saved_status or "unknown",
+            "space_name": context.space_name,
+            "source_excerpt": context.source_excerpt,
+            "match_reason": reason,
+        })
+    return files
+
+
+def _local_file_for_source(ws: Workspace, source_id: str) -> dict | None:
+    with sqlite3.connect(ws.sqlite_path) as conn:
+        row = conn.execute(
+            """
+            SELECT id, title, path
+            FROM sources
+            WHERE id = ?
+            """,
+            (source_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    source_page = f"wiki/sources/{row[0]}.md"
+    raw_path = row[2] or ""
+    return {
+        "source_id": row[0],
+        "title": row[1],
+        "path": source_page,
+        "raw_path": raw_path,
+        "open_target": "raw" if raw_path else "source_page",
+    }
+
+
+def _local_file_reason(context) -> str:
+    if context.why_saved_status == "user-stated" and context.why_saved:
+        return "命中了你保存时写下的理由。"
+    if context.why_saved_status == "AI-inferred":
+        return "命中了系统推断出的关联，需要你确认。"
+    if context.source_excerpt:
+        return "命中了材料正文里的相关片段。"
+    return "命中了本地图谱里的相关材料。"
+
+
+def _workspace_file_path(ws: Workspace, relative_path: str) -> Path:
+    if not relative_path:
+        raise HTTPException(400, "path is required")
+    root = ws.path.resolve()
+    path = (root / relative_path).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(400, "Path must stay inside the workspace") from exc
+    if not path.exists():
+        raise HTTPException(404, "Local file not found")
+    return path
+
+
+def _open_path(path: Path) -> None:
+    if sys.platform == "darwin":
+        command = ["open", str(path)]
+    elif sys.platform.startswith("win"):
+        command = ["cmd", "/c", "start", "", str(path)]
+    else:
+        command = ["xdg-open", str(path)]
+    subprocess.Popen(command)
+
+
 def _ask_response_payload(
     ws: Workspace,
     result: AnswerResult,
@@ -917,11 +1142,17 @@ def _ask_response_payload(
         "provider": metadata_dict,
         "space_id": space_id,
         "contexts": _contexts_payload(ws, result.retrieval),
+        "local_files": _local_files_payload(ws, result.retrieval),
         "graph_paths": result.retrieval.graph_paths,
         "diagnostics": asdict(result.retrieval.diagnostics),
         "focus_graph": focus_graph_from_retrieval(
             ws,
             result.retrieval,
+            space_id=space_id,
+        ),
+        "recall_projection": build_recall_result_projection(
+            result,
+            provider_metadata=metadata_dict,
             space_id=space_id,
         ),
     }

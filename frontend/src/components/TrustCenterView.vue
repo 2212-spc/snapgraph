@@ -3,8 +3,8 @@
     <header class="trust-center-header">
       <div>
         <p class="eyebrow">信任</p>
-        <h1>检查 AI 猜测有没有冒充你的想法</h1>
-        <p>把 AI 推断、证据路径、open loop 和审查历史放在一个可操作的工作台里。</p>
+        <h1>信任检查</h1>
+        <p>这里只帮你确认一件事：系统有没有把 AI 猜测当成你的真实想法。</p>
       </div>
       <button class="paper-button" type="button" :disabled="busy" @click="$emit('refresh')">刷新</button>
     </header>

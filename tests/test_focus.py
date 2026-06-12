@@ -22,6 +22,9 @@ def test_focus_graph_for_question_is_local_and_prioritizes_user_guided(tmp_path:
     assert 0 < len(focus["nodes"]) <= 18
     assert len(focus["edges"]) < 65
     assert focus["evidence_cards"]
+    assert focus["local_files"]
+    assert focus["local_files"][0]["path"].startswith("wiki/sources/")
+    assert focus["local_files"][0]["open_target"] in {"raw", "source_page"}
     assert focus["evidence_cards"][0]["why_saved_status"] == "user-stated"
     assert focus["confidence_summary"]["user_stated"] >= 1
     assert focus["open_loops"]
@@ -71,8 +74,10 @@ def test_api_focus_and_ask_return_focus_graph(tmp_path: Path, monkeypatch) -> No
     assert focus.status_code == 200
     assert ask.status_code == 200
     assert 0 < len(focus.json()["nodes"]) <= 18
+    assert focus.json()["local_files"]
     assert "focus_graph" in ask.json()
     assert ask.json()["focus_graph"]["evidence_cards"]
+    assert ask.json()["focus_graph"]["local_files"]
 
 
 def test_api_ingest_returns_capture_review_focus_graph(tmp_path: Path, monkeypatch) -> None:

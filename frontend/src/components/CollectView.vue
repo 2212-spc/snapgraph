@@ -462,6 +462,32 @@ function askBatch() {
   emit('askBatch', batchQuestion.value)
 }
 
+async function startTitleEdit() {
+  titleDraft.value = receiptTitle.value
+  titleEditOpen.value = true
+  await nextTick()
+  titleInput.value?.focus()
+  titleInput.value?.select()
+}
+
+function confirmTitleEdit() {
+  if (props.busy) return
+  const receipt = activeReceipt.value
+  const nextTitle = titleDraft.value.trim()
+  if (!receipt || !nextTitle) return
+
+  titleEditOpen.value = false
+  titleDraft.value = ''
+  if (nextTitle !== receiptTitle.value) {
+    emit('updateTitle', receipt.source_id, nextTitle)
+  }
+}
+
+function cancelTitleEdit() {
+  titleEditOpen.value = false
+  titleDraft.value = ''
+}
+
 async function continueCollect() {
   if (activeReceipt.value) {
     hiddenReceiptSourceId.value = activeReceipt.value.source_id
