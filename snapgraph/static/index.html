@@ -9,5 +9,85 @@
   </head>
   <body>
     <div id="app"></div>
+        function patchTrustHeader() {
+          document.querySelectorAll('.trust-center-header').forEach((header) => {
+            if (header.dataset.trustHeaderPatched === 'true') {
+              return;
+            }
+
+            const eyebrow = header.querySelector('.eyebrow');
+            const title = header.querySelector('h1');
+            const paragraphs = header.querySelectorAll('p:not(.eyebrow)');
+
+            if (eyebrow) {
+              eyebrow.textContent = '信任';
+            }
+            if (title) {
+              title.textContent = '检查 AI 猜测有没有冒充你的想法';
+            }
+            if (paragraphs[0]) {
+              paragraphs[0].textContent = '把 AI 推断、证据路径、open loop 和审查历史放在一个可操作的工作台里。';
+            }
+
+            header.dataset.trustHeaderPatched = 'true';
+          });
+        }
+
+        let scheduled = false;
+        const observer = new MutationObserver(() => {
+          if (scheduled) {
+            return;
+          }
+          scheduled = true;
+          requestAnimationFrame(() => {
+            scheduled = false;
+            patchTrustHeader();
+          });
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', patchTrustHeader, { once: true });
+        } else {
+          patchTrustHeader();
+        }
+      })();
+    </script>
+    <script>
+      (() => {
+        const placeholders = [
+          '例如：我之前为什么觉得这个方向值得做？',
+          '例如：有哪些证据说明我当时在关注这个问题？',
+          '例如：根据这些材料，帮我整理一个可执行判断',
+        ];
+
+        function patchRecallPlaceholder() {
+          const switcher = document.querySelector('.recall-mode-switch');
+          const textarea = document.querySelector('.recall-command textarea');
+          if (!switcher || !textarea) {
+            return;
+          }
+
+          const buttons = Array.from(switcher.querySelectorAll('button'));
+          const activeIndex = buttons.findIndex((button) => button.classList.contains('active'));
+          const nextPlaceholder = placeholders[activeIndex >= 0 ? activeIndex : 0];
+
+          if (textarea.getAttribute('placeholder') !== nextPlaceholder) {
+            textarea.setAttribute('placeholder', nextPlaceholder);
+          }
+        }
+
+        const observer = new MutationObserver(() => {
+          patchRecallPlaceholder();
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', patchRecallPlaceholder, { once: true });
+        } else {
+          patchRecallPlaceholder();
+        }
+      })();
+    </script>
   </body>
 </html>

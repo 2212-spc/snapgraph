@@ -41,6 +41,7 @@
         </div>
       </form>
 
+
       <div v-if="!showResult" class="starter-grid">
         <button
           v-for="prompt in prompts"
@@ -128,6 +129,11 @@ const heroCopy = computed(() => showResult.value
   ? '继续从本地文件和保存理由里追问这个判断，必要时直接打开原文件回到源头。'
   : '先回到本地文件、用户原话和保存理由，再让 AI 把推断与证据分清。')
 const displayQuestion = computed(() => question.value.trim() || props.currentQuestion || props.result?.question || '')
+const placeholderText = computed(() => {
+  if (props.mode === 'files') return '例如：有哪些证据说明我当时在关注这个问题？'
+  if (props.mode === 'answer') return '例如：根据这些材料，帮我整理一个可执行判断'
+  return '例如：我之前为什么觉得这个方向值得做？'
+})
 const statusText = computed(() => props.busy ? props.busyStage || '正在回答。' : '按回车或点击发送。')
 const recentQuestions = computed(() => props.recentQuestions || [])
 const localFiles = computed<LocalFileResult[]>(() => props.result?.local_files || props.focusGraph?.local_files || [])
