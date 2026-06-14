@@ -1,6 +1,16 @@
-# SnapGraph
+<p align="center">
+  <img src="docs/assets/snapgraph-readme-deep-thought.jpg" alt="SnapGraph Deep Thought recall workspace" width="94%">
+</p>
 
-> A local cognitive memory system for preserving not just sources, but the reason they mattered.
+<h1 align="center">SnapGraph</h1>
+
+<p align="center">
+  <strong>A local cognitive memory system for preserving not just sources, but the reason they mattered.</strong>
+</p>
+
+<p align="center">
+  Ask past work, collect material with intent, review emerging connections, and keep every answer traceable to the original source.
+</p>
 
 ![Python](https://img.shields.io/badge/Python-3.11+-2b5b84?style=flat-square)
 ![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square)
@@ -11,36 +21,52 @@ SnapGraph is a cognitive LLM Wiki. It turns notes, links, text files, PDFs, scre
 
 Most note apps remember *what* you saved. SnapGraph also preserves:
 
-- why it mattered at the moment of capture
-- which project, question, person, or open loop it relates to
-- whether the reason was user-stated or AI-inferred
-- which original sources support a later answer
-- how an old answer can be reopened and continued
+- **why it mattered** at the moment of capture
+- **where it belongs** across projects, questions, people, tasks, and open loops
+- **who said the reason**: user-stated vs. AI-inferred
+- **which source supports the answer** through evidence paths and original files
+- **how to continue the thread** through restored multi-turn recall history
 
-<p align="center">
-  <img src="docs/assets/snapgraph-knowledge-spaces.png" alt="SnapGraph knowledge spaces" width="82%">
-</p>
-
-## Product Shape
+## Product Experience
 
 SnapGraph combines four product surfaces:
 
-| Surface | Purpose |
-| --- | --- |
-| **Ask Past** | Ask fuzzy questions such as "Why did I care about this?" and recover prior context with local evidence first. |
-| **Emerge** | Review open loops, AI-inferred context, and newly surfaced graph connections without losing source traceability. |
-| **Collect** | Save raw material with an optional user-stated reason. Raw sources remain traceable. |
-| **Shelf** | Browse graph spaces, saved questions, materials, diagnostics, and the memory constellation. |
-
-<p align="center">
-  <img src="docs/assets/snapgraph-memory-cloud.png" alt="SnapGraph memory cloud" width="82%">
-</p>
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/snapgraph-readme-ask-past.jpg" alt="Ask Past recall workspace">
+      <br>
+      <strong>Ask Past</strong>
+      <br>
+      Ask fuzzy questions such as "Why did I care about this?" and recover prior context with local evidence first.
+    </td>
+    <td width="50%">
+      <img src="docs/assets/snapgraph-readme-emerge.jpg" alt="Emerge review workspace">
+      <br>
+      <strong>Emerge</strong>
+      <br>
+      Review open loops, AI-inferred context, and newly surfaced graph connections without losing source traceability.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/snapgraph-readme-collect.jpg" alt="Collect material workspace">
+      <br>
+      <strong>Collect</strong>
+      <br>
+      Save screenshots, PDFs, pages, or raw notes with one plain-language reason attached.
+    </td>
+    <td width="50%">
+      <img src="docs/assets/snapgraph-readme-shelf.jpg" alt="Shelf graph spaces workspace">
+      <br>
+      <strong>Shelf</strong>
+      <br>
+      Browse graph spaces, saved questions, materials, diagnostics, and the memory constellation.
+    </td>
+  </tr>
+</table>
 
 The current frontend is a real Vue/FastAPI app, not a throwaway mockup. It includes a paper-like SnapGraph shell, chat history in the sidebar, multi-turn recall threads, Deep Thought streaming, graph-space creation, a draggable memory cloud, source evidence lists, and mobile responsive layouts.
-
-<p align="center">
-  <img src="docs/assets/snapgraph-mobile-recall.png" alt="SnapGraph mobile recall" width="34%">
-</p>
 
 ## Core Features
 
@@ -54,6 +80,15 @@ The current frontend is a real Vue/FastAPI app, not a throwaway mockup. It inclu
 - **Knowledge cloud**: search history becomes a constellation of saved questions, materials, open loops, and graph nodes.
 - **Local-first trust model**: API keys stay in environment variables; config stores only provider/model names.
 - **Deterministic tests**: MockLLM remains the default for repeatable development and evaluation.
+
+## What Makes It Different
+
+| Ordinary chat | SnapGraph |
+| --- | --- |
+| Answers the prompt in front of it. | Reopens the material, reason, and graph context behind the prompt. |
+| Treats memory as transcript history. | Treats memory as sources, thoughts, graph edges, and evidence paths. |
+| Blends user intent with model inference. | Labels user-stated reasons separately from AI-inferred context. |
+| Streams an answer immediately. | In Deep Thought mode, streams a public solve trace first, then answers. |
 
 ## Quick Start
 
