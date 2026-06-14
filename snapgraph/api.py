@@ -24,6 +24,7 @@ from .answer import (
     render_answer,
     save_answer,
 )
+from .answer_quality import build_answer_quality_pack
 from .config import (
     load_config,
     save_config,
@@ -32,7 +33,12 @@ from .config import (
     SnapGraphConfig,
 )
 from .demo_data import load_demo_dataset, DEMO_QUESTIONS
+from .decision_layers import (
+    build_collect_decision_layers,
+    build_recall_decision_layers,
+)
 from .focus import focus_graph_for_payload, focus_graph_from_retrieval
+from .graph_evidence import build_graph_evidence_pack
 from .graph_store import (
     create_graph_theme,
     create_manual_edge,
@@ -55,6 +61,8 @@ from .models import AnswerResult, DEFAULT_GRAPH_SPACE_ID, INBOX_GRAPH_SPACE_ID
 from .report import write_graph_report
 from .retrieval import retrieve_for_question
 from .recall_projection import build_recall_result_projection
+from .recall_history_insights import build_recall_history_insights
+from .source_traceability import build_source_traceability_audit
 from .spaces import (
     accept_suggestion,
     create_graph_space,
@@ -76,6 +84,8 @@ from .trust_center import (
     update_open_loop_state,
 )
 from .wiki import question_pages, source_pages
+from .workspace_health import build_workspace_health_pack
+from .workspace_governance import build_workspace_governance_report
 from .workspace import Workspace, create_workspace, get_workspace
 
 
@@ -276,7 +286,11 @@ def api_workspace():
         status_rows = conn.execute(
             "SELECT why_saved_status, COUNT(*) FROM cognitive_contexts GROUP BY why_saved_status"
         ).fetchall()
-    return {
+    context_status = {row[0]: row[1] for row in status_rows}
+    top_hubs = [{"label": label, "degree": d} for label, d in diag.top_hubs]
+    insights = graph_insights(ws)
+    spaces = list_graph_spaces(ws)
+    payload = {
         "sources": source_count,
         "saved_questions": len(question_pages(ws)),
         "nodes": diag.node_count,
@@ -284,15 +298,32 @@ def api_workspace():
         "lint_status": lint.status,
         "lint_errors": lint.errors,
         "lint_warnings": lint.warnings,
-        "context_status": {row[0]: row[1] for row in status_rows},
+        "context_status": context_status,
         "node_types": diag.node_types,
-        "top_hubs": [{"label": label, "degree": d} for label, d in diag.top_hubs],
+        "top_hubs": top_hubs,
         "orphans": diag.orphans,
-        "insights": graph_insights(ws),
+        "insights": insights,
         "workspace_path": str(ws.path),
         "provider": provider_metadata(ws).as_dict(),
-        "spaces": list_graph_spaces(ws),
+        "spaces": spaces,
     }
+    payload["workspace_health"] = build_workspace_health_pack(
+        source_count=source_count,
+        saved_questions=payload["saved_questions"],
+        node_count=diag.node_count,
+        edge_count=diag.edge_count,
+        lint_status=lint.status,
+        lint_errors=lint.errors,
+        lint_warnings=lint.warnings,
+        context_status=context_status,
+        node_types=diag.node_types,
+        top_hubs=top_hubs,
+        orphans=diag.orphans,
+        spaces=spaces,
+        insights=insights,
+    )
+    payload["traceability_audit"] = build_source_traceability_audit(ws)
+    return payload
 
 
 # ── Graph spaces ──
@@ -572,6 +603,11 @@ def api_trust_open_loops(state: str = ""):
     return list_open_loops(_workspace(), state=state or None)
 
 
+@app.get("/api/governance/report")
+def api_governance_report():
+    return build_workspace_governance_report(_workspace())
+
+
 @app.patch("/api/trust/open-loops/{loop_id}")
 def api_trust_open_loop_update(loop_id: str, payload: dict):
     try:
@@ -645,6 +681,13 @@ def api_ingest(
             {"source_id": result.source.id, "space_id": source_detail.get("graph_space_id", result.source.graph_space_id)},
         ),
         "routing_suggestion": routing_suggestion,
+        "decision_layers": build_collect_decision_layers(
+            result,
+            source_detail=source_detail,
+            routing_suggestion=routing_suggestion,
+            route_mode=route_mode,
+            provider_metadata=metadata.as_dict(),
+        ),
     }
 
 
@@ -1407,34 +1450,37 @@ def _recall_history_payload(ws: Workspace, *, limit: int, thread_id: str = "") -
             """,
             (*params, limit),
         ).fetchall()
+    items = [
+        {
+            "id": row[0],
+            "thread_id": row[1],
+            "turn_id": row[2],
+            "turn_index": row[3],
+            "question": row[4],
+            "mode": row[5],
+            "depth": row[6],
+            "space_id": row[7],
+            "previous_turns": _loads_json_object_list(row[8]),
+            "context_source_ids": _loads_json_list(row[9]),
+            "answer_text": row[10],
+            "answer_preview": row[11],
+            "thought_summary": row[12],
+            "thought": _loads_json_dict(row[13]),
+            "context_count": row[14],
+            "local_file_count": row[15],
+            "created_at": row[16],
+            "updated_at": row[17],
+        }
+        for row in rows
+    ]
+    summary = {
+        "total": total,
+        "returned": len(rows),
+    }
     return {
-        "items": [
-            {
-                "id": row[0],
-                "thread_id": row[1],
-                "turn_id": row[2],
-                "turn_index": row[3],
-                "question": row[4],
-                "mode": row[5],
-                "depth": row[6],
-                "space_id": row[7],
-                "previous_turns": _loads_json_object_list(row[8]),
-                "context_source_ids": _loads_json_list(row[9]),
-                "answer_text": row[10],
-                "answer_preview": row[11],
-                "thought_summary": row[12],
-                "thought": _loads_json_dict(row[13]),
-                "context_count": row[14],
-                "local_file_count": row[15],
-                "created_at": row[16],
-                "updated_at": row[17],
-            }
-            for row in rows
-        ],
-        "summary": {
-            "total": total,
-            "returned": len(rows),
-        },
+        "items": items,
+        "summary": summary,
+        "history_insights": build_recall_history_insights(items, summary),
     }
 
 
@@ -1882,6 +1928,16 @@ def _ask_response_payload(
             provider_metadata=metadata_dict,
             space_id=space_id,
         ),
+        "decision_layers": build_recall_decision_layers(
+            result,
+            provider_metadata=metadata_dict,
+            space_id=space_id,
+        ),
+        "answer_quality": build_answer_quality_pack(
+            result,
+            provider_metadata=metadata_dict,
+            space_id=space_id,
+        ),
     }
 
 
@@ -2004,6 +2060,7 @@ def _graph_payload(ws: Workspace, space_id: str | None = DEFAULT_GRAPH_SPACE_ID)
         "top_hubs": _top_hubs(graph),
         "orphans": _orphans(graph),
         "insights": graph_insights(ws),
+        "graph_evidence": build_graph_evidence_pack(graph, space_id=space_id),
     }
 
 

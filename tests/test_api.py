@@ -137,6 +137,53 @@ def test_api_ask_uses_recall_emergence_section_contract(tmp_path: Path, monkeypa
     assert projection["write_back_preview"]["source_ids"]
 
 
+def test_api_ask_includes_decision_layers(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    response = client.post(
+        "/api/ask",
+        json={"question": "鎴戜箣鍓嶄负浠€涔堣寰楁埅鍥句笉鏄牳蹇冿紵", "save": False},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    layers = payload["decision_layers"]
+    assert layers["summary"]["question"]
+    assert layers["summary"]["answer_boundary"] in {
+        "unsupported",
+        "mixed",
+        "user_supported",
+        "ai_inferred",
+        "source_supported",
+        "fallback",
+    }
+    assert "evidence_health" in layers
+    assert "answer_boundary" in layers
+    assert "next_actions" in layers
+    assert layers["user_path"]
+    assert layers["diagnostic_trace"]["space_id"] == "all"
+    assert layers["strategy_pack"]["readiness"]["label"]
+    assert layers["strategy_pack"]["query_plan"]["intent"]
+
+
+def test_api_ask_decision_layers_mark_unsupported_without_evidence(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/ask",
+        json={"question": "A question that has no saved source yet", "save": False},
+    )
+
+    assert response.status_code == 200
+    layers = response.json()["decision_layers"]
+    assert layers["summary"]["answer_boundary"] == "unsupported"
+    assert layers["evidence_health"]["status"] == "needs_collection"
+    assert layers["next_actions"][0]["kind"] == "collect_evidence"
+
+
 def test_api_ask_exposes_clickable_local_files(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)
@@ -227,6 +274,53 @@ def test_api_ask_accepts_current_batch_context_source_ids(tmp_path: Path, monkey
     ]
     assert payload["diagnostics"]["pinned_contexts"] == 2
     assert "current batch context" in " ".join(payload["diagnostics"]["top_candidate_reasons"])
+
+
+def test_api_ingest_exposes_capture_diagnostics(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/ingest",
+        files={"file": ("capture.md", b"# Capture\n\nThis source explains the product memory workflow.", "text/markdown")},
+        data={"route_mode": "auto"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    layers = payload["decision_layers"]
+    assert layers["capture_quality"]["source_id"] == payload["source_id"]
+    assert layers["capture_quality"]["why_saved_boundary"] in {"AI-inferred", "user-stated", "user-guided"}
+    assert layers["routing"]["route_mode"] == "auto"
+    assert layers["traceability"]["wiki_page"] == payload["wiki_page"]
+    assert layers["next_actions"]
+    assert layers["quality_pack"]["capture_audit"]["source_id"] == payload["source_id"]
+    assert layers["quality_pack"]["receipt_contract"]["default_collapsed"] is True
+
+
+def test_api_duplicate_ingest_decision_layers_mark_trace_status(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    file_payload = b"# Capture\n\nThis source should only be stored once."
+    first = client.post(
+        "/api/ingest",
+        files={"file": ("capture.md", file_payload, "text/markdown")},
+        data={"route_mode": "auto"},
+    )
+    second = client.post(
+        "/api/ingest",
+        files={"file": ("capture-copy.md", file_payload, "text/markdown")},
+        data={"route_mode": "auto"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    payload = second.json()
+    layers = payload["decision_layers"]
+    assert payload["deduplicated"] is True
+    assert layers["capture_quality"]["deduplicated"] is True
+    assert layers["traceability"]["trace_status"] == "deduplicated"
+    assert any(action["kind"] == "open_existing" for action in layers["next_actions"])
 
 
 def test_api_ask_stream_accepts_current_batch_context_source_ids(tmp_path: Path, monkeypatch) -> None:
