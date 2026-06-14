@@ -74,6 +74,44 @@ def test_trust_review_queue_exposes_engine_3_payload(
     assert item["analysis"]["quiet_summary"]
 
 
+def test_trust_review_queue_exposes_decision_layers(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    payload = client.get("/api/trust/review").json()
+
+    layers = payload["decision_layers"]
+    assert layers["attention_budget"]["default_visible_items"] <= len(payload["items"])
+    assert layers["priority_lanes"]
+    assert layers["priority_lanes"][0]["id"] == "must_review"
+    assert "batch_candidates" in layers
+    assert "session_script" in layers
+    assert layers["summary"]["total"] == payload["summary"]["total"]
+    assert layers["workflow_pack"]["work_modes"]
+    assert layers["workflow_pack"]["queue_health"]["total"] == payload["summary"]["total"]
+
+
+def test_trust_review_queue_decision_layers_survive_empty_filter(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    payload = client.get("/api/trust/review?q=definitely-not-present").json()
+
+    layers = payload["decision_layers"]
+    assert payload["items"] == []
+    assert layers["summary"]["first_lane"] == "must_review"
+    assert layers["attention_budget"]["pressure_level"] == "empty"
+    assert layers["decision_routes"]["empty_route"]
+
+
 def test_trust_review_detail_exposes_compressed_evidence_and_preview(
     tmp_path: Path,
     monkeypatch,
@@ -91,6 +129,25 @@ def test_trust_review_detail_exposes_compressed_evidence_and_preview(
     assert detail["analysis"]["session_fit"]["reason"]
     assert detail["analysis"]["impact_map"]["future_recall"]
     assert detail["report_slice"]["recommended_action"]
+
+
+def test_trust_review_detail_exposes_decision_layers(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+    source_id = client.get("/api/trust/review").json()["items"][0]["source_id"]
+
+    detail = client.get(f"/api/trust/review/{source_id}").json()
+
+    layers = detail["decision_layers"]
+    assert layers["decision_header"]["source_id"] == source_id
+    assert layers["review_ladder"]
+    assert layers["rewrite_guardrails"]["must_avoid"]
+    assert layers["impact_preview"]["graph"]
+    assert layers["decision_buttons"]
 
 
 def test_trust_review_detail_exposes_traceability(tmp_path: Path, monkeypatch) -> None:

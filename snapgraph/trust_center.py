@@ -8,6 +8,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from .decision_layers import build_trust_detail_decision_layers, build_trust_queue_decision_layers
 from .ingest import review_ai_inference
 from .models import DEFAULT_GRAPH_SPACE_ID
 from .trust_engine import (
@@ -16,6 +17,7 @@ from .trust_engine import (
     build_report_payload,
     build_session_payload,
 )
+from .trust_noise import build_trust_noise_pack
 from .workspace import Workspace
 
 
@@ -59,13 +61,20 @@ def list_review_items(workspace: Workspace, filters: dict | None = None) -> dict
     for item in items:
         item["analysis"] = build_item_analysis(item, peers=items)
     summary = _summary(items)
-    return {
+    payload = {
         "items": items,
         "summary": summary,
         "filters": filter_values,
         "session": build_session_payload(items, summary, filter_values),
         "report": build_report_payload(items, summary, filter_values),
     }
+    payload["decision_layers"] = build_trust_queue_decision_layers(
+        items,
+        summary,
+        filter_values,
+    )
+    payload["noise_reduction"] = build_trust_noise_pack(items, summary, filter_values)
+    return payload
 
 
 def get_review_detail(workspace: Workspace, source_id: str) -> dict:
@@ -87,7 +96,7 @@ def get_review_detail(workspace: Workspace, source_id: str) -> dict:
         open_loops=open_loops,
         peers=payload["items"],
     )
-    return {
+    detail_payload = {
         "item": item,
         "analysis": analysis,
         "report_slice": build_detail_report_slice(item, analysis),
@@ -96,6 +105,8 @@ def get_review_detail(workspace: Workspace, source_id: str) -> dict:
         "open_loops": open_loops,
         "source_map": _source_map_summary(workspace, source_id),
     }
+    detail_payload["decision_layers"] = build_trust_detail_decision_layers(detail_payload)
+    return detail_payload
 
 
 def trust_summary(workspace: Workspace) -> dict:
