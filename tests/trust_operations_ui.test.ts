@@ -9,19 +9,27 @@ function read(relativePath: string) {
   return readFileSync(resolve(root, relativePath), 'utf8')
 }
 
-test('App exposes Trust Center as a primary workspace view', () => {
+test('App keeps trust operations available inside the emergence and shelf flow', () => {
   const app = read('frontend/src/App.vue')
+  const organize = read('frontend/src/components/OrganizeView.vue')
+  const shelf = read('frontend/src/components/ShelfView.vue')
 
-  assert.match(app, /type ActiveView = 'recall' \| 'spaces' \| 'trust' \| 'collect'/)
-  assert.match(app, /label: '信任'/)
-  assert.match(app, /ShieldCheck/)
-  assert.match(app, /<TrustCenterView/)
+  assert.match(app, /type ActiveView = 'recall' \| 'emerge' \| 'collect' \| 'shelf'/)
+  assert.match(app, /label: '涌现'/)
+  assert.match(app, /label: '书架'/)
+  assert.match(app, /<OrganizeView/)
+  assert.match(app, /<ShelfView/)
+  assert.match(organize, /batchAction/)
+  assert.match(organize, /updateOpenLoop/)
+  assert.match(shelf, /高级详情/)
   assert.match(app, /loadTrustCenter/)
   assert.match(app, /applyTrustBatch/)
   assert.match(app, /updateTrustOpenLoop/)
   assert.match(app, /\/api\/trust\/review/)
   assert.match(app, /\/api\/trust\/open-loops/)
   assert.match(app, /\/api\/trust\/diagnostics/)
+  assert.doesNotMatch(app, /label: '信任'/)
+  assert.doesNotMatch(app, /ShieldCheck/)
 })
 
 test('Trust Center components expose review operations, evidence, open loops, and diagnostics', () => {

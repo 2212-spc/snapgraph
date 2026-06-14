@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { filterUserFacingAnswerMarkdown } from '../frontend/src/answerDisplay.ts'
+import { filterUserFacingAnswerMarkdown, normalizeRestoredAnswerMarkdown } from '../frontend/src/answerDisplay.ts'
 
 const root = process.cwd()
 
@@ -50,6 +50,17 @@ test('answer display filters internal retrieval sections from the chat response'
   assert.doesNotMatch(displayMarkdown, /top_k/)
 })
 
+test('restored history answer repairs flattened markdown headings before rendering', () => {
+  const flattened = '# 回答 ## 结论 你提到的 “follow up”，正文应该是普通段落。 ## 找回的原话 - `SnapGraph Idea`: evidence ## AI 探索回应 继续解释。'
+  const normalized = normalizeRestoredAnswerMarkdown(flattened)
+  const displayMarkdown = filterUserFacingAnswerMarkdown(normalized)
+
+  assert.match(normalized, /^# 回答\n\n## 结论\n\n你提到的/)
+  assert.match(displayMarkdown, /## 结论\n\n你提到的 “follow up”，正文应该是普通段落。/)
+  assert.match(displayMarkdown, /## AI 探索回应\n\n继续解释。/)
+  assert.doesNotMatch(displayMarkdown, /## 找回的原话/)
+})
+
 test('RecallResult defaults to local files and SnapGraph thinking', () => {
   const result = read('frontend/src/components/RecallResult.vue')
   const app = read('frontend/src/App.vue')
@@ -58,15 +69,17 @@ test('RecallResult defaults to local files and SnapGraph thinking', () => {
   const richMarkdown = read('frontend/src/components/RichMarkdown.vue')
 
   assert.match(result, /local-file-results/)
-  assert.match(result, /召回的本地文件/)
+  assert.match(result, /recall-file-receipts/)
   assert.match(result, /snapgraph-thinking/)
-  assert.match(result, /SnapGraph 的思考/)
+  assert.match(result, /recall-memory-touchpoints/)
+  assert.match(result, /证据路径/)
+  assert.match(result, /AI 的补充 · 不冒充你/)
   assert.match(result, /RichMarkdown/)
   assert.match(result, /displayAnswerMarkdown/)
   assert.match(result, /filterUserFacingAnswerMarkdown/)
   assert.match(result, /local-file-compact-card/)
   assert.match(result, /thinking-footnotes/)
-  assert.match(result, /AI 推断/)
+  assert.match(result, /AI 猜的理由/)
   assert.match(result, /openLocalFile/)
   assert.doesNotMatch(result, /写回预览/)
   assert.doesNotMatch(result, /需要确认的地方/)

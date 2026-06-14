@@ -1,8 +1,41 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from snapgraph.api import app
+
+
+def test_api_thought_history_summarizes_reference_events_without_raw_thinking(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "chat"
+    events_path = root / "deep_solve" / "bot-alpha" / "turn_001" / "events.jsonl"
+    events_path.parent.mkdir(parents=True)
+    events = [
+        {"type": "session", "metadata": {"turn_id": "turn_001", "session_id": "session_a"}},
+        {"type": "stage_start", "stage": "planning"},
+        {"type": "thinking", "content": "SECRET RAW THOUGHT DRAFT should never be returned"},
+        {"type": "progress", "stage": "reasoning"},
+        {"type": "tool_call", "name": "search"},
+        {"type": "tool_result", "name": "search"},
+        {"type": "content", "content": "最终回答：使用接口适配器隔离复杂度。"},
+    ]
+    events_path.write_text("\n".join(json.dumps(event, ensure_ascii=False) for event in events), encoding="utf-8")
+    monkeypatch.setenv("SNAPGRAPH_THOUGHT_HISTORY_DIR", str(root))
+    client = TestClient(app)
+
+    response = client.get("/api/thought-history?limit=2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["turns"] == 1
+    assert payload["summary"]["thinking_events"] == 1
+    assert payload["summary"]["tool_events"] == 2
+    assert payload["items"][0]["surface"] == "Solve"
+    assert payload["items"][0]["stage_flow"] == ["Plan", "Reason"]
+    assert "最终回答" in payload["items"][0]["answer_preview"]
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert "SECRET RAW THOUGHT DRAFT" not in serialized
+    assert "内部草稿" in payload["notice"]
 
 
 def test_api_demo_exposes_sources_questions_and_graph_insights(tmp_path: Path, monkeypatch) -> None:
@@ -228,6 +261,165 @@ def test_api_ask_stream_accepts_current_batch_context_source_ids(tmp_path: Path,
     assert "Stream batch B" in body
 
 
+def test_api_ask_stream_deep_records_recall_history(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    response = client.post(
+        "/api/ask/stream",
+        json={
+            "question": "我为什么要从 LLM Wiki 开始？",
+            "space_id": "all",
+            "depth": "deep",
+            "mode": "auto",
+            "thread_id": "thread-a",
+            "turn_id": "turn-a",
+            "turn_index": 2,
+            "previous_turns": [
+                {
+                    "question": "上一轮问了什么？",
+                    "answer_preview": "上一轮的答案摘要",
+                    "mode": "auto",
+                    "depth": "quick",
+                }
+            ],
+            "save": False,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "event: thought" in body
+    assert '"stage_flow"' in body
+    assert "event: final" in body
+    assert '"thought"' in body
+
+    history_response = client.get("/api/recall-history?limit=5")
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert history["summary"]["total"] >= 1
+    first = history["items"][0]
+    assert first["question"] == "我为什么要从 LLM Wiki 开始？"
+    assert first["mode"] == "auto"
+    assert first["depth"] == "deep"
+    assert first["space_id"] == "all"
+    assert first["thread_id"] == "thread-a"
+    assert first["turn_id"] == "turn-a"
+    assert first["turn_index"] == 2
+    assert first["answer_text"]
+    assert "\n## " in first["answer_text"]
+    assert "# 回答 ##" not in first["answer_text"]
+    assert first["thought"]
+    assert first["thought"]["stage_flow"][:2] == ["Plan", "Retrieve"]
+    assert "Think" in first["thought"]["stage_flow"]
+    assert "Finish" in first["thought"]["stage_flow"]
+    assert first["previous_turns"][0]["question"] == "上一轮问了什么？"
+    assert first["context_count"] >= 1
+    assert first["thought_summary"]
+
+
+def test_api_recall_history_filters_multiple_turns_by_thread(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    first_response = client.post(
+        "/api/ask/stream",
+        json={
+            "question": "第一轮为什么从 LLM Wiki 开始？",
+            "space_id": "all",
+            "mode": "auto",
+            "depth": "quick",
+            "thread_id": "thread-restore",
+            "turn_id": "turn-restore-1",
+            "turn_index": 1,
+            "save": False,
+        },
+    )
+    second_response = client.post(
+        "/api/ask/stream",
+        json={
+            "question": "第二轮它和普通搜索区别是什么？",
+            "space_id": "all",
+            "mode": "auto",
+            "depth": "deep",
+            "thread_id": "thread-restore",
+            "turn_id": "turn-restore-2",
+            "turn_index": 2,
+            "previous_turns": [
+                {
+                    "question": "第一轮为什么从 LLM Wiki 开始？",
+                    "answer_preview": "第一轮公开回答摘要",
+                    "mode": "auto",
+                    "depth": "quick",
+                }
+            ],
+            "save": False,
+        },
+    )
+    other_response = client.post(
+        "/api/ask/stream",
+        json={
+            "question": "其他线程的问题",
+            "space_id": "all",
+            "mode": "answer",
+            "depth": "quick",
+            "thread_id": "thread-other",
+            "turn_id": "turn-other-1",
+            "turn_index": 1,
+            "save": False,
+        },
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert other_response.status_code == 200
+
+    history_response = client.get("/api/recall-history?thread_id=thread-restore&limit=10")
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert history["summary"]["total"] == 2
+    assert {item["thread_id"] for item in history["items"]} == {"thread-restore"}
+    assert {item["turn_id"] for item in history["items"]} == {"turn-restore-1", "turn-restore-2"}
+    second = next(item for item in history["items"] if item["turn_id"] == "turn-restore-2")
+    assert second["turn_index"] == 2
+    assert second["previous_turns"][0]["question"] == "第一轮为什么从 LLM Wiki 开始？"
+    assert second["answer_text"]
+    assert second["thought"]
+
+
+def test_api_ask_stream_deep_records_history_without_contexts(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/ask/stream",
+        json={
+            "question": "完全不存在的材料 zzz-snapgraph-no-context",
+            "space_id": "all",
+            "depth": "deep",
+            "mode": "auto",
+            "save": False,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "event: thought" in body
+    assert "event: final" in body
+
+    history_response = client.get("/api/recall-history?limit=5")
+    assert history_response.status_code == 200
+    first = history_response.json()["items"][0]
+    assert first["question"] == "完全不存在的材料 zzz-snapgraph-no-context"
+    assert first["mode"] == "auto"
+    assert first["depth"] == "deep"
+    assert first["context_count"] == 0
+    assert first["local_file_count"] == 0
+    assert first["thought_summary"]
+
+
 def test_api_ask_stream_emits_agent_stages_and_final_answer(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)
@@ -248,6 +440,41 @@ def test_api_ask_stream_emits_agent_stages_and_final_answer(tmp_path: Path, monk
 
 
     assert '"recall_projection"' in body
+
+
+def test_api_ask_stream_emits_current_public_thought_before_answer_in_deep_mode(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    response = client.post(
+        "/api/ask/stream",
+        json={"question": "我为什么要从 LLM Wiki 开始？", "depth": "deep", "save": False},
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "event: thought" in body
+    assert body.count("event: thought_delta") >= 3
+    assert body.index('"id": "connect"') < body.index("event: thought")
+    assert body.index('"status": "thinking"') < body.index("event: thought_delta")
+    first_delta = body.index("event: thought_delta")
+    assert '"trace_role": "thought"' in body
+    assert '"call_kind": "llm_reasoning"' in body
+    assert '"trace_kind": "llm_chunk"' in body
+    assert '"call_state": "running"' in body
+    assert '"trace_events": []' in body[:first_delta]
+    thought_done = body.index('"status": "done"', first_delta)
+    assert '"trace_kind": "llm_output"' in body[thought_done:]
+    assert '"call_state": "complete"' in body[thought_done:]
+    write_stage = body.index('"id": "write"', thought_done)
+    assert first_delta < thought_done
+    assert thought_done < write_stage
+    assert write_stage < body.index("event: final")
+    assert '"title": "Thought"' in body
+    assert "我为什么要从 LLM Wiki 开始？" in body
+    assert "LLM Wiki Note" in body
+    assert "隐藏草稿" not in body
 
 
 def test_api_reports_provider_metadata(tmp_path: Path, monkeypatch) -> None:

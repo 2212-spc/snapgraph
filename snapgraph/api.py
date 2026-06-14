@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
+import re
 import sqlite3
 import subprocess
 import sys
 import tempfile
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile, File, Form
@@ -107,6 +110,153 @@ def _raise_provider_runtime_error(
         provider_error=str(exc),
     ).as_dict()
     raise HTTPException(status_code=502, detail=error_metadata) from exc
+
+
+def _thought_history_root() -> Path:
+    return Path(
+        os.environ.get(
+            "SNAPGRAPH_THOUGHT_HISTORY_DIR",
+            "/Users/apple/Documents/软件体系结构大作业/data/user/workspace/chat",
+        )
+    )
+
+
+def _thought_history_payload(root: Path, *, limit: int) -> dict:
+    if not root.exists():
+        return {
+            "source_path": str(root),
+            "items": [],
+            "summary": {
+                "turns": 0,
+                "thinking_events": 0,
+                "tool_events": 0,
+                "content_events": 0,
+            },
+            "notice": "没有找到参考项目的历史对话记录。",
+        }
+    event_files = list(root.rglob("events.jsonl"))
+    event_files.sort(
+        key=lambda path: (
+            0 if "deep_solve" in path.parts else 1,
+            -path.stat().st_mtime,
+        )
+    )
+    items = [_summarize_thought_events(path, root) for path in event_files[:limit]]
+    items = [item for item in items if item]
+    return {
+        "source_path": str(root),
+        "items": items,
+        "summary": {
+            "turns": len(items),
+            "thinking_events": sum(item["thinking_steps"] for item in items),
+            "tool_events": sum(item["tool_events"] for item in items),
+            "content_events": sum(item["content_events"] for item in items),
+        },
+        "notice": "Thought 只显示阶段摘要，不展示模型内部草稿。",
+    }
+
+
+def _summarize_thought_events(path: Path, root: Path) -> dict | None:
+    counts: dict[str, int] = {}
+    stages: list[str] = []
+    content_parts: list[str] = []
+    turn_id = path.parent.name
+    session_id = ""
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        event_type = str(event.get("type") or "").strip()
+        if not event_type:
+            continue
+        counts[event_type] = counts.get(event_type, 0) + 1
+        if event_type == "session":
+            metadata = event.get("metadata") or {}
+            turn_id = str(metadata.get("turn_id") or turn_id)
+            session_id = str(metadata.get("session_id") or session_id)
+        if event_type == "stage_start":
+            stage = _thought_stage_label(str(event.get("stage") or ""))
+            if stage and stage not in stages:
+                stages.append(stage)
+        if event_type == "progress":
+            metadata = event.get("metadata") or {}
+            stage = _thought_stage_label(str(event.get("stage") or metadata.get("phase") or ""))
+            if stage and stage not in stages:
+                stages.append(stage)
+        if event_type == "content":
+            content = str(event.get("content") or "").strip()
+            if content:
+                content_parts.append(content)
+
+    if not counts:
+        return None
+    surface = _thought_surface_label(path)
+    thinking_steps = counts.get("thinking", 0)
+    tool_events = counts.get("tool_call", 0) + counts.get("tool_result", 0)
+    content_events = counts.get("content", 0)
+    stage_flow = stages[:4] or ["回答"]
+    answer_preview = _compact_preview(" ".join(content_parts), limit=120)
+    title = _thought_title(surface, answer_preview, turn_id)
+    thought_lines = [
+        f"{surface} 走过 {' → '.join(stage_flow)}。",
+        f"记录到 {thinking_steps} 个 thought 片段、{tool_events} 个工具事件；这里显示摘要。",
+    ]
+    if answer_preview:
+        thought_lines.append(f"输出预览：{answer_preview}")
+    return {
+        "id": turn_id,
+        "turn_id": turn_id,
+        "session_id": session_id,
+        "surface": surface,
+        "title": title,
+        "relative_path": str(path.relative_to(root)),
+        "stage_flow": stage_flow,
+        "event_count": sum(counts.values()),
+        "thinking_steps": thinking_steps,
+        "tool_events": tool_events,
+        "content_events": content_events,
+        "answer_preview": answer_preview,
+        "thought_lines": thought_lines,
+    }
+
+
+def _thought_surface_label(path: Path) -> str:
+    if "deep_solve" in path.parts:
+        return "Solve"
+    if "deep_question" in path.parts:
+        return "Question"
+    if "research" in path.parts:
+        return "Research"
+    return "Chat"
+
+
+def _thought_stage_label(stage: str) -> str:
+    labels = {
+        "planning": "Plan",
+        "reasoning": "Reason",
+        "responding": "Respond",
+        "exploring": "Explore",
+        "writing": "Write",
+        "quizzing": "Quiz",
+    }
+    return labels.get(stage.strip().lower(), stage.strip())
+
+
+def _thought_title(surface: str, preview: str, turn_id: str) -> str:
+    if preview:
+        heading = re.sub(r"^#+\s*", "", preview).strip()
+        return f"{surface} · {heading[:34]}"
+    return f"{surface} · {turn_id}"
+
+
+def _compact_preview(text: str, *, limit: int) -> str:
+    cleaned = re.sub(r"```[\s\S]*?```", " ", text)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip() + "..."
 
 
 @app.on_event("startup")
@@ -652,7 +802,45 @@ def api_graph_theme_update(theme_id: str, payload: dict):
 
 @app.post("/api/focus")
 def api_focus(payload: dict):
-    return focus_graph_for_payload(_workspace(), payload)
+    ws = _workspace()
+    question = str(payload.get("question") or "").strip()
+    if not question:
+        return focus_graph_for_payload(ws, payload)
+
+    space_id = str(payload.get("space_id") or "all")
+    mode = str(payload.get("mode") or "auto")
+    depth = str(payload.get("depth") or "quick")
+    recall_metadata = _recall_turn_metadata(payload)
+    retrieval = retrieve_for_question(
+        ws,
+        question,
+        space_id=space_id,
+        context_source_ids=_payload_context_source_ids(payload),
+    )
+    focus = focus_graph_from_retrieval(ws, retrieval, space_id=space_id)
+    if _safe_recall_depth(depth) == "deep":
+        focus["thought"] = _public_thought_payload(
+            question,
+            retrieval,
+            previous_turns=recall_metadata["previous_turns"],
+            status="done",
+        )
+    if _safe_recall_mode(mode) == "files":
+        _record_recall_history(
+            ws,
+            question=question,
+            mode=mode,
+            depth=depth,
+            space_id=space_id,
+            **recall_metadata,
+            response={
+                "text": "",
+                "contexts": _contexts_payload(ws, retrieval),
+                "local_files": _local_files_payload(ws, retrieval),
+                "thought": focus.get("thought") or {},
+            },
+        )
+    return focus
 
 
 # ── Ask ──
@@ -661,10 +849,13 @@ def api_focus(payload: dict):
 def api_ask(payload: dict):
     question = payload.get("question", "").strip()
     save = payload.get("save", False)
+    mode = str(payload.get("mode") or "auto")
+    depth = str(payload.get("depth") or "quick")
     if not question:
         raise HTTPException(400, "Question is required")
     space_id = str(payload.get("space_id") or "all")
     context_source_ids = _payload_context_source_ids(payload)
+    recall_metadata = _recall_turn_metadata(payload)
     ws = _workspace()
     retrieval = retrieve_for_question(
         ws,
@@ -712,7 +903,26 @@ def api_ask(payload: dict):
             )
         else:
             _raise_provider_runtime_error(ws, metadata_dict, exc)
-    response = _ask_response_payload(ws, result, metadata_dict, space_id)
+    response = _ask_response_payload(
+        ws,
+        result,
+        metadata_dict,
+        space_id,
+        thought=_public_thought_payload(
+            result.question,
+            result.retrieval,
+            previous_turns=recall_metadata["previous_turns"],
+        ) if _safe_recall_depth(depth) == "deep" else None,
+    )
+    _record_recall_history(
+        ws,
+        question=question,
+        mode=mode,
+        depth=depth,
+        space_id=space_id,
+        **recall_metadata,
+        response=response,
+    )
     if save:
         page = save_answer(ws, result)
         response["saved_page"] = page.relative_page_path
@@ -723,10 +933,13 @@ def api_ask(payload: dict):
 def api_ask_stream(payload: dict):
     question = payload.get("question", "").strip()
     save = payload.get("save", False)
+    depth = str(payload.get("depth") or "quick")
+    mode = str(payload.get("mode") or "auto")
     if not question:
         raise HTTPException(400, "Question is required")
     space_id = str(payload.get("space_id") or "all")
     context_source_ids = _payload_context_source_ids(payload)
+    recall_metadata = _recall_turn_metadata(payload)
 
     def generate():
         ws = _workspace()
@@ -756,9 +969,37 @@ def api_ask_stream(payload: dict):
             },
         )
 
+        thought_payload = None
         if not retrieval.contexts:
+            if _safe_recall_depth(depth) == "deep":
+                thought_payload = _public_thought_payload(
+                    question,
+                    retrieval,
+                    previous_turns=recall_metadata["previous_turns"],
+                    status="done",
+                )
+                yield from _stream_public_thought(thought_payload)
             result = answer_question(ws, question, llm=None, space_id=space_id, retrieval=retrieval)
-            yield _sse("final", _ask_response_payload(ws, result, provider_metadata(ws, provider_used="none").as_dict(), space_id))
+            response = _ask_response_payload(
+                ws,
+                result,
+                provider_metadata(ws, provider_used="none").as_dict(),
+                space_id,
+                thought=thought_payload,
+            )
+            _record_recall_history(
+                ws,
+                question=question,
+                mode=mode,
+                depth=depth,
+                space_id=space_id,
+                **recall_metadata,
+                response=response,
+            )
+            if save:
+                page = save_answer(ws, result)
+                response["saved_page"] = page.relative_page_path
+            yield _sse("final", response)
             return
 
         yield _sse(
@@ -779,6 +1020,14 @@ def api_ask_stream(payload: dict):
                 "detail": f"{len(retrieval.graph_paths)} 条连接路径",
             },
         )
+        if _safe_recall_depth(depth) == "deep":
+            thought_payload = _public_thought_payload(
+                question,
+                retrieval,
+                previous_turns=recall_metadata["previous_turns"],
+                status="done",
+            )
+            yield from _stream_public_thought(thought_payload)
         yield _sse(
             "stage",
             {
@@ -824,7 +1073,16 @@ def api_ask_stream(payload: dict):
             )
             result = answer_question(ws, question, llm=None, space_id=space_id, retrieval=retrieval)
 
-        response = _ask_response_payload(ws, result, metadata_dict, space_id)
+        response = _ask_response_payload(ws, result, metadata_dict, space_id, thought=thought_payload)
+        _record_recall_history(
+            ws,
+            question=question,
+            mode=mode,
+            depth=depth,
+            space_id=space_id,
+            **recall_metadata,
+            response=response,
+        )
         if save:
             page = save_answer(ws, result)
             response["saved_page"] = page.relative_page_path
@@ -944,6 +1202,23 @@ def api_demo_load(payload: dict | None = Body(default=None)):
     }
 
 
+@app.get("/api/thought-history")
+def api_thought_history(limit: int = 4):
+    root = _thought_history_root()
+    if limit < 1:
+        limit = 1
+    limit = min(limit, 8)
+    return _thought_history_payload(root, limit=limit)
+
+
+@app.get("/api/recall-history")
+def api_recall_history(limit: int = 12, thread_id: str = ""):
+    if limit < 1:
+        limit = 1
+    thread_id = thread_id.strip()
+    return _recall_history_payload(_workspace(), limit=min(limit, 50 if thread_id else 24), thread_id=thread_id)
+
+
 # ── Config ──
 
 @app.get("/api/config")
@@ -1009,6 +1284,214 @@ def _provider_action_label(metadata: dict) -> str:
     return f"{label} 正在组织回答。"
 
 
+def _record_recall_history(
+    ws: Workspace,
+    *,
+    question: str,
+    mode: str,
+    depth: str,
+    space_id: str,
+    thread_id: str = "",
+    turn_id: str = "",
+    turn_index: int = 0,
+    previous_turns: list[dict] | None = None,
+    response: dict,
+) -> None:
+    context_source_ids = [
+        str(context.get("source_id"))
+        for context in response.get("contexts", [])
+        if context.get("source_id")
+    ]
+    history_id = turn_id or _recall_history_id(question, space_id)
+    now = _now_iso()
+    answer_text = _preserve_answer_markdown(str(response.get("text") or ""))
+    answer_preview = _compact_preview(answer_text, limit=180)
+    thought = response.get("thought") or {}
+    thought_summary = str(thought.get("summary") or "").strip()
+    sanitized_previous_turns = _sanitize_previous_turns(previous_turns or [])
+    with sqlite3.connect(ws.sqlite_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO recall_history (
+                id,
+                thread_id,
+                turn_id,
+                turn_index,
+                question,
+                mode,
+                depth,
+                space_id,
+                previous_turns_json,
+                context_source_ids_json,
+                answer_text,
+                answer_preview,
+                thought_summary,
+                thought_json,
+                context_count,
+                local_file_count,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                thread_id = excluded.thread_id,
+                turn_id = excluded.turn_id,
+                turn_index = excluded.turn_index,
+                question = excluded.question,
+                mode = excluded.mode,
+                depth = excluded.depth,
+                space_id = excluded.space_id,
+                previous_turns_json = excluded.previous_turns_json,
+                context_source_ids_json = excluded.context_source_ids_json,
+                answer_text = excluded.answer_text,
+                answer_preview = excluded.answer_preview,
+                thought_summary = excluded.thought_summary,
+                thought_json = excluded.thought_json,
+                context_count = excluded.context_count,
+                local_file_count = excluded.local_file_count,
+                updated_at = excluded.updated_at
+            """,
+            (
+                history_id,
+                thread_id,
+                turn_id,
+                int(turn_index or 0),
+                question,
+                _safe_recall_mode(mode),
+                _safe_recall_depth(depth),
+                space_id or "all",
+                json.dumps(sanitized_previous_turns, ensure_ascii=False),
+                json.dumps(context_source_ids, ensure_ascii=False),
+                answer_text,
+                answer_preview,
+                thought_summary,
+                json.dumps(thought, ensure_ascii=False),
+                len(response.get("contexts", [])),
+                len(response.get("local_files", [])),
+                now,
+                now,
+            ),
+        )
+
+
+def _recall_history_payload(ws: Workspace, *, limit: int, thread_id: str = "") -> dict:
+    with sqlite3.connect(ws.sqlite_path) as conn:
+        where = "WHERE thread_id = ? OR id = ?" if thread_id else ""
+        params: tuple[object, ...] = (thread_id, thread_id) if thread_id else ()
+        total = int(conn.execute(f"SELECT COUNT(*) FROM recall_history {where}", params).fetchone()[0])
+        rows = conn.execute(
+            f"""
+            SELECT
+                id,
+                thread_id,
+                turn_id,
+                turn_index,
+                question,
+                mode,
+                depth,
+                space_id,
+                previous_turns_json,
+                context_source_ids_json,
+                answer_text,
+                answer_preview,
+                thought_summary,
+                thought_json,
+                context_count,
+                local_file_count,
+                created_at,
+                updated_at
+            FROM recall_history
+            {where}
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (*params, limit),
+        ).fetchall()
+    return {
+        "items": [
+            {
+                "id": row[0],
+                "thread_id": row[1],
+                "turn_id": row[2],
+                "turn_index": row[3],
+                "question": row[4],
+                "mode": row[5],
+                "depth": row[6],
+                "space_id": row[7],
+                "previous_turns": _loads_json_object_list(row[8]),
+                "context_source_ids": _loads_json_list(row[9]),
+                "answer_text": row[10],
+                "answer_preview": row[11],
+                "thought_summary": row[12],
+                "thought": _loads_json_dict(row[13]),
+                "context_count": row[14],
+                "local_file_count": row[15],
+                "created_at": row[16],
+                "updated_at": row[17],
+            }
+            for row in rows
+        ],
+        "summary": {
+            "total": total,
+            "returned": len(rows),
+        },
+    }
+
+
+def _recall_history_id(question: str, space_id: str) -> str:
+    digest = hashlib.sha1(f"{space_id or 'all'}\n{question.strip()}".encode("utf-8")).hexdigest()[:14]
+    return f"recall_{digest}"
+
+
+def _recall_turn_metadata(payload: dict) -> dict:
+    turn_index = payload.get("turn_index") or 0
+    try:
+        turn_index_int = int(turn_index)
+    except (TypeError, ValueError):
+        turn_index_int = 0
+    return {
+        "thread_id": str(payload.get("thread_id") or "").strip(),
+        "turn_id": str(payload.get("turn_id") or "").strip(),
+        "turn_index": max(0, turn_index_int),
+        "previous_turns": _payload_previous_turns(payload),
+    }
+
+
+def _payload_previous_turns(payload: dict) -> list[dict]:
+    return _sanitize_previous_turns(payload.get("previous_turns") or [])
+
+
+def _sanitize_previous_turns(raw: object) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    turns: list[dict] = []
+    for item in raw[-8:]:
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question") or "").strip()
+        if not question:
+            continue
+        turns.append({
+            "question": _compact_inline(question, 160),
+            "answer_preview": _compact_inline(str(item.get("answer_preview") or item.get("answer") or ""), 240),
+            "mode": _safe_recall_mode(str(item.get("mode") or "auto")),
+            "depth": _safe_recall_depth(str(item.get("depth") or "quick")),
+        })
+    return turns
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_recall_mode(mode: str) -> str:
+    return mode if mode in {"auto", "files", "answer"} else "auto"
+
+
+def _safe_recall_depth(depth: str) -> str:
+    return depth if depth in {"quick", "deep"} else "quick"
+
+
 def _context_dicts(retrieval) -> list[dict]:
     return [
         {
@@ -1026,6 +1509,246 @@ def _context_dicts(retrieval) -> list[dict]:
         }
         for context in retrieval.contexts
     ]
+
+
+def _public_thought_payload(
+    question: str,
+    retrieval,
+    *,
+    previous_turns: list[dict] | None = None,
+    status: str = "done",
+) -> dict:
+    contexts = retrieval.contexts
+    user_count = retrieval.diagnostics.user_stated_contexts
+    ai_count = retrieval.diagnostics.ai_inferred_contexts
+    evidence_titles = _dedupe_texts([context.title for context in contexts])[:4]
+    primary_title = evidence_titles[0] if evidence_titles else ""
+    sanitized_previous_turns = _sanitize_previous_turns(previous_turns or [])
+    stage_flow = ["Plan", "Retrieve", "Think", "Verify", "Finish"]
+    trace_events: list[dict] = []
+
+    def add_trace(label: str, phase: str, trace_role: str, text: str) -> None:
+        trace_events.append(
+            _public_thought_trace_event(
+                index=len(trace_events) + 1,
+                label=label,
+                phase=phase,
+                trace_role=trace_role,
+                text=text,
+                status=status,
+            )
+        )
+
+    add_trace(
+        "Plan",
+        "planning",
+        "plan",
+        f"把“{_compact_inline(question, 42)}”拆成要恢复的记忆对象、可用证据、回答边界三部分。",
+    )
+    if sanitized_previous_turns:
+        add_trace(
+            "Context",
+            "planning",
+            "thought",
+            f"沿用同一窗口前 {len(sanitized_previous_turns)} 轮摘要，只读取问题和公开回答摘要，不读取隐藏草稿。",
+        )
+    if contexts:
+        evidence_label = "、".join(evidence_titles[:3])
+        add_trace(
+            "Retrieve",
+            "retrieval",
+            "retrieve",
+            f"从本地图谱召回 {len(contexts)} 条材料，优先检查 {evidence_label}。",
+        )
+        add_trace(
+            "Think",
+            "reasoning",
+            "thought",
+            "把召回材料按“用户明确说过 / AI 推断 / 只来自正文命中”分层，先用高信任材料支撑结论。",
+        )
+        if user_count:
+            add_trace(
+                "Think",
+                "reasoning",
+                "thought",
+                f"{user_count} 条带有用户写过的保存理由，可以当作更靠前的判断依据。",
+            )
+        if ai_count:
+            add_trace(
+                "Verify",
+                "verification",
+                "thought",
+                f"{ai_count} 条是 AI 猜的理由，只能作为线索，不能当成你的原话。",
+            )
+        if retrieval.graph_paths:
+            add_trace(
+                "Verify",
+                "verification",
+                "thought",
+                f"用 {len(retrieval.graph_paths)} 条连接路径检查材料之间是否互相支撑，避免只凭一个片段下结论。",
+            )
+    else:
+        add_trace("Retrieve", "retrieval", "retrieve", "这次没有找到可靠本地材料，所以答案会先说明低置信度。")
+        add_trace("Think", "reasoning", "thought", "没有证据时只整理问题本身，不补写你当时的真实动机。")
+        add_trace("Verify", "verification", "thought", "没有证据时不会替你编造当时为什么保存。")
+    add_trace("Finish", "answering", "response", "先给结论，再把证据边界、AI 推断和下一步分开写。")
+    lines = [f"{event['label']}：{event['text']}" for event in trace_events]
+    summary = (
+        f"本轮按 Plan → Retrieve → Verify 先看 {primary_title}，再回答。"
+        if primary_title
+        else "本轮按 Plan → Retrieve → Verify 运行，但没有可靠材料，先说明边界再回答。"
+    )
+    return {
+        "id": "current-recall-thought",
+        "title": "Thought",
+        "status": status,
+        "question": question,
+        "summary": summary,
+        "lines": lines,
+        "trace_events": trace_events,
+        "stage_flow": stage_flow,
+        "evidence_titles": evidence_titles,
+        "notice": "这是后端 solve 模式的公开推理轨迹；不展示模型私有草稿。",
+    }
+
+
+def _public_thought_trace_event(
+    *,
+    index: int,
+    label: str,
+    phase: str,
+    trace_role: str,
+    text: str,
+    status: str,
+) -> dict:
+    return {
+        "trace_id": f"recall-{phase}-{index}",
+        "phase": phase,
+        "label": label,
+        "trace_role": trace_role,
+        "call_kind": "llm_reasoning",
+        "trace_kind": "llm_output" if status == "done" else "llm_chunk",
+        "call_state": "complete" if status == "done" else "running",
+        "index": index,
+        "text": text,
+    }
+
+
+def _thought_trace_events_for_stream(thought_payload: dict) -> list[dict]:
+    trace_events = thought_payload.get("trace_events")
+    if isinstance(trace_events, list) and trace_events:
+        return [
+            {
+                **event,
+                "text": str(event.get("text") or ""),
+            }
+            for event in trace_events
+            if isinstance(event, dict) and str(event.get("text") or "").strip()
+        ]
+    events = []
+    for index, line in enumerate(thought_payload.get("lines", []), start=1):
+        text = str(line or "")
+        match = re.match(r"^([^：:]{1,24})[：:]\s*(.+)$", text)
+        label = match.group(1) if match else "Think"
+        body = match.group(2) if match else text
+        events.append(
+            _public_thought_trace_event(
+                index=index,
+                label=label,
+                phase="reasoning",
+                trace_role="thought",
+                text=body,
+                status="done",
+            )
+        )
+    return events
+
+
+def _split_public_thought_text(text: str, chunk_size: int = 18) -> list[str]:
+    cleaned = str(text or "")
+    if len(cleaned) <= chunk_size:
+        return [cleaned] if cleaned else []
+    chunks: list[str] = []
+    buffer = ""
+    for char in cleaned:
+        buffer += char
+        if len(buffer) >= chunk_size and char in "，。；、,!?！？ ":
+            chunks.append(buffer)
+            buffer = ""
+        elif len(buffer) >= chunk_size * 2:
+            chunks.append(buffer)
+            buffer = ""
+    if buffer:
+        chunks.append(buffer)
+    return chunks
+
+
+def _thought_stream_delay() -> float:
+    raw = os.environ.get("SNAPGRAPH_THOUGHT_STREAM_DELAY", "0.012")
+    try:
+        return max(0.0, min(float(raw), 0.2))
+    except ValueError:
+        return 0.012
+
+
+def _stream_public_thought(thought_payload: dict):
+    trace_events = _thought_trace_events_for_stream(thought_payload)
+    thinking_payload = {
+        **thought_payload,
+        "status": "thinking",
+        "lines": [],
+        "trace_events": [],
+    }
+    yield _sse("thought", thinking_payload)
+    delay = _thought_stream_delay()
+    for event in trace_events:
+        for chunk in _split_public_thought_text(str(event.get("text") or "")):
+            yield _sse(
+                "thought_delta",
+                {
+                    **event,
+                    "id": thought_payload.get("id") or "current-recall-thought",
+                    "text": chunk,
+                    "status": "thinking",
+                    "trace_kind": "llm_chunk",
+                    "call_state": "running",
+                },
+            )
+            if delay:
+                import time
+
+                time.sleep(delay)
+    done_events = [
+        {
+            **event,
+            "trace_kind": "llm_output",
+            "call_state": "complete",
+        }
+        for event in trace_events
+    ]
+    done_lines = [f"{event['label']}：{event['text']}" for event in done_events]
+    yield _sse(
+        "thought",
+        {**thought_payload, "status": "done", "lines": done_lines, "trace_events": done_events},
+    )
+
+
+def _dedupe_texts(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in seen:
+            result.append(text)
+            seen.add(text)
+    return result
+
+
+def _compact_inline(text: str, limit: int) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip() + "..."
 
 
 def _payload_context_source_ids(payload: dict) -> list[str]:
@@ -1135,7 +1858,10 @@ def _ask_response_payload(
     result: AnswerResult,
     metadata_dict: dict,
     space_id: str,
+    *,
+    thought: dict | None = None,
 ) -> dict:
+    thought_payload = thought or _public_thought_payload(result.question, result.retrieval)
     return {
         "question": result.question,
         "text": result.text,
@@ -1145,6 +1871,7 @@ def _ask_response_payload(
         "local_files": _local_files_payload(ws, result.retrieval),
         "graph_paths": result.retrieval.graph_paths,
         "diagnostics": asdict(result.retrieval.diagnostics),
+        "thought": thought_payload,
         "focus_graph": focus_graph_from_retrieval(
             ws,
             result.retrieval,
@@ -1211,6 +1938,14 @@ def _clean_markdown_text(text: str) -> str:
     ).strip()
 
 
+def _preserve_answer_markdown(text: str) -> str:
+    return re.sub(
+        r"\n{3,}",
+        "\n\n",
+        text.replace("\r\n", "\n").replace("# Answer", "# 回答").strip(),
+    )
+
+
 def _loads_json_list(value: str | None) -> list[str]:
     if not value:
         return []
@@ -1221,6 +1956,28 @@ def _loads_json_list(value: str | None) -> list[str]:
     if not isinstance(loaded, list):
         return []
     return [str(item) for item in loaded]
+
+
+def _loads_json_object_list(value: str | None) -> list[dict]:
+    if not value:
+        return []
+    try:
+        loaded = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(loaded, list):
+        return []
+    return [item for item in loaded if isinstance(item, dict)]
+
+
+def _loads_json_dict(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        loaded = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
 
 
 def _context_confidence_by_source(workspace: Workspace) -> dict[str, float]:

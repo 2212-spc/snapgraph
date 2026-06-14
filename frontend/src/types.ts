@@ -81,6 +81,7 @@ export type FocusGraph = {
   edges: Array<{ id: string; source: string; target: string; relation: string; evidence_source_id?: string }>
   evidence_cards: EvidenceCard[]
   local_files?: LocalFileResult[]
+  thought?: RecallThought
   open_loops: string[]
   confidence_summary: {
     source_count: number
@@ -179,15 +180,122 @@ export type AskResponse = {
   focus_graph: FocusGraph
   recall_projection?: RecallProjection
   local_files?: LocalFileResult[]
+  thought?: RecallThought
 }
 
 export type RecallMode = 'auto' | 'files' | 'answer'
+
+export type RecallDepth = 'quick' | 'deep'
+
+export type RecallThoughtTraceEvent = {
+  trace_id: string
+  phase: string
+  label: string
+  trace_role: string
+  call_kind: string
+  trace_kind: 'llm_chunk' | 'llm_output'
+  call_state: 'running' | 'complete'
+  index: number
+  text: string
+}
+
+export type RecallThought = {
+  id: string
+  title: string
+  status: 'thinking' | 'done'
+  question: string
+  summary: string
+  lines: string[]
+  trace_events?: RecallThoughtTraceEvent[]
+  stage_flow: string[]
+  evidence_titles: string[]
+  notice: string
+}
+
+export type ThoughtHistoryItem = {
+  id: string
+  turn_id: string
+  session_id: string
+  surface: string
+  title: string
+  relative_path: string
+  stage_flow: string[]
+  event_count: number
+  thinking_steps: number
+  tool_events: number
+  content_events: number
+  answer_preview: string
+  thought_lines: string[]
+}
+
+export type ThoughtHistoryPayload = {
+  source_path: string
+  items: ThoughtHistoryItem[]
+  summary: {
+    turns: number
+    thinking_events: number
+    tool_events: number
+    content_events: number
+  }
+  notice: string
+}
+
+export type RecallHistoryItem = {
+  id: string
+  thread_id: string
+  turn_id: string
+  turn_index: number
+  question: string
+  mode: RecallMode
+  depth: RecallDepth
+  space_id: string
+  previous_turns: Array<{
+    question: string
+    answer_preview: string
+    mode: RecallMode
+    depth: RecallDepth
+  }>
+  context_source_ids: string[]
+  answer_text: string
+  answer_preview: string
+  thought_summary: string
+  thought: RecallThought | Record<string, never>
+  context_count: number
+  local_file_count: number
+  created_at: string
+  updated_at: string
+}
+
+export type RecallHistoryPayload = {
+  items: RecallHistoryItem[]
+  summary: {
+    total: number
+    returned: number
+  }
+}
 
 export type RecallStage = {
   id: string
   label: string
   status: 'pending' | 'active' | 'done' | 'error'
   detail?: string
+}
+
+export type RecallConversationTurn = {
+  threadId: string
+  turnId: string
+  turnIndex: number
+  question: string
+  mode: RecallMode
+  depth: RecallDepth
+  spaceId: string
+  result: AskResponse | null
+  focusGraph: FocusGraph | null
+  stages: RecallStage[]
+  currentThought?: RecallThought | null
+  localFiles?: LocalFileResult[]
+  busy?: boolean
+  answerPreview?: string
 }
 
 export type Suggestion = {

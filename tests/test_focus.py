@@ -80,6 +80,38 @@ def test_api_focus_and_ask_return_focus_graph(tmp_path: Path, monkeypatch) -> No
     assert ask.json()["focus_graph"]["local_files"]
 
 
+def test_api_focus_files_mode_records_backend_history_and_thought(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+    client.post("/api/demo/load")
+
+    focus = client.post(
+        "/api/focus",
+        json={
+            "question": "我为什么要从 LLM Wiki 开始？",
+            "space_id": "all",
+            "mode": "files",
+            "depth": "deep",
+        },
+    )
+
+    assert focus.status_code == 200
+    payload = focus.json()
+    assert payload["local_files"]
+    assert payload["thought"]["title"] == "Thought"
+    assert payload["thought"]["summary"]
+
+    history = client.get("/api/recall-history?limit=5")
+    assert history.status_code == 200
+    first = history.json()["items"][0]
+    assert first["question"] == "我为什么要从 LLM Wiki 开始？"
+    assert first["mode"] == "files"
+    assert first["depth"] == "deep"
+    assert first["context_count"] >= 1
+    assert first["local_file_count"] >= 1
+    assert first["thought_summary"]
+
+
 def test_api_ingest_returns_capture_review_focus_graph(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     client = TestClient(app)

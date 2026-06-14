@@ -1,111 +1,143 @@
 <template>
-  <section :class="['recall-result', 'recall-response-focus', 'recall-response-stack', `mode-${mode}`]">
-    <article v-if="showFiles" class="local-file-results">
-      <div class="focus-panel-head">
+  <section :class="['recall-result', 'recall-reference-result', `mode-${mode}`, `depth-${depth}`]">
+    <article v-if="showDeepProcess && showCurrentThought" class="deeptutor-thought-card" aria-label="本轮 Thought">
+      <header class="deeptutor-thought-header">
         <div>
-          <div class="result-kicker">本地结果</div>
-          <h2>{{ filePanelTitle }}</h2>
+          <span class="deeptutor-thought-kicker">真实 Thought</span>
+          <strong>先想，再答</strong>
         </div>
-        <span>{{ localFileCountLabel }}</span>
-      </div>
+        <span class="deeptutor-thought-mode">Solve mode</span>
+      </header>
 
-      <div v-if="localFiles.length" class="local-file-list">
-        <details
-          v-for="(file, index) in visibleLocalFiles"
-          :key="file.source_id"
-          class="local-file-card local-file-compact-card"
-          :open="index === 0 && visibleLocalFiles.length <= 3"
-        >
-          <summary>
-            <div class="local-file-icon" aria-hidden="true">
-              <span>{{ index + 1 }}</span>
-              <FileText :size="15" />
-            </div>
-            <div class="local-file-main">
-              <div class="local-file-title-row">
-                <strong>{{ file.title }}</strong>
-              </div>
-              <small>{{ displayPath(file) }}</small>
-            </div>
-            <div class="local-file-summary-meta">
-              <span :class="['local-file-status', statusTone(file)]">{{ statusLabel(file) }}</span>
-              <ChevronDown :size="15" />
-            </div>
-          </summary>
-          <div class="local-file-detail">
-            <p>{{ file.match_reason || fileReason(file) }}</p>
-            <blockquote v-if="file.source_excerpt">{{ file.source_excerpt }}</blockquote>
-            <div class="local-file-actions">
-              <button class="source-link-button" type="button" @click="openLocalFile(file)">
-                <ExternalLink :size="14" />
-                <span>打开</span>
-              </button>
-              <button class="paper-button" type="button" @click="askAboutFile(file)">
-                <MessageSquare :size="14" />
-                <span>追问</span>
-              </button>
-            </div>
-          </div>
-        </details>
-      </div>
-
-      <div v-else-if="isResolvingLocalFiles" class="local-file-loading" aria-live="polite">
-        <div class="loading-file-row" aria-hidden="true">
-          <span></span>
-          <div>
-            <i></i>
-            <i></i>
-          </div>
+      <div class="deeptutor-thought-box">
+        <div class="thought-box-head">
+          <strong>{{ thoughtHeading }}</strong>
+          <span>{{ thoughtBoxStatus }}</span>
         </div>
-        <p>正在从本地记忆里找文件，找到后会直接出现在这里。</p>
+        <div class="thought-trace-list">
+          <article
+            v-for="item in thoughtTraceItems"
+            :key="`${item.id}-${item.label}`"
+            :class="['thought-trace-row', { active: item.active }]"
+          >
+            <span class="thought-trace-label">{{ item.label }}</span>
+            <p>{{ item.text }}</p>
+          </article>
+        </div>
       </div>
-
-      <p v-else class="focus-empty-state">没有找到能支撑这个问题的本地文件。</p>
+      <p class="deeptutor-thought-notice">{{ thoughtNotice }}</p>
     </article>
 
-    <article v-if="showAnswer" class="snapgraph-thinking">
-      <div class="focus-panel-head">
-        <div>
-          <div class="result-kicker">AI 回复</div>
-          <h2>{{ answerPanelTitle }}</h2>
-        </div>
-        <span>{{ thinkingStateLabel }}</span>
+    <div class="meta-line">
+      <span :class="['tag', resultToneClass]">{{ resultToneLabel }}</span>
+      <span>{{ resultMeta }}</span>
+    </div>
+
+    <article v-if="showFiles" class="local-file-results recall-file-receipts">
+      <template v-if="visibleLocalFiles.length">
+        <article
+          v-for="(file, index) in visibleLocalFiles"
+          :key="file.source_id"
+          class="receipt-lg local-file-card local-file-compact-card"
+          :style="{ animationDelay: `${index * 0.08}s` }"
+        >
+          <div class="head">
+            <span :class="['tag', statusTagClass(file)]">{{ statusLabel(file) }}</span>
+            <span class="when">{{ fileSubtitle(file) }}</span>
+          </div>
+          <div class="quote">「{{ fileQuote(file) }}」</div>
+          <div class="src">
+            <span>{{ file.title }}</span>
+            <button class="open source-link-button" type="button" @click="openLocalFile(file)">打开原文 ↗</button>
+          </div>
+        </article>
+
+        <details v-if="hiddenLocalFileCount > 0" class="evidence local-file-more-note">
+          <summary>还有 {{ hiddenLocalFileCount }} 份材料，先收起来</summary>
+          <div class="body">
+            <button
+              v-for="file in hiddenLocalFiles"
+              :key="file.source_id"
+              class="web-src compact-source-row"
+              type="button"
+              @click="openLocalFile(file)"
+            >
+              <span class="dom">{{ file.space_name || '本地材料' }}</span>
+              <span class="ttl">{{ file.title }}</span>
+              <span class="take">打开 ↗</span>
+            </button>
+          </div>
+        </details>
+      </template>
+
+      <div v-else-if="isResolvingLocalFiles" class="refuse local-file-loading" aria-live="polite">
+        <h3>正在找本地文件。</h3>
+        <p>找到后会先显示最相关的一两张回执，不会把列表铺满屏幕。</p>
       </div>
 
-      <div class="thinking-answer" aria-live="polite">
-        <div v-if="isThinking" class="thinking-stream-state">
-          <span class="thinking-pulse" aria-hidden="true"></span>
-          <div>
-            <strong>{{ thinkingProgressLabel }}</strong>
-            <p>{{ thinkingProgressDetail }}</p>
-          </div>
-          <div class="thinking-skeleton" aria-hidden="true">
-            <i></i>
-            <i></i>
-            <i></i>
+      <div v-else class="refuse focus-empty-state">
+        <h3>本地没有找到文件。</h3>
+        <p>我不会把没找到说成找到了。可以换个项目名、文件名或保存理由再问一次。</p>
+      </div>
+    </article>
+
+    <article v-if="showAnswer" class="snapgraph-thinking ai-aside">
+      <div class="lbl">AI 的补充 · 不冒充你</div>
+
+      <div v-if="isThinking" class="thinking-stream-state" aria-live="polite">
+        <strong>{{ thinkingProgressLabel }}</strong>
+        <p>{{ thinkingProgressDetail }}</p>
+      </div>
+      <div v-else class="thinking-markdown-wrap" :class="{ 'is-streaming': isStreamingAnswer }">
+        <RichMarkdown :markdown="displayAnswerMarkdown" />
+        <span v-if="isStreamingAnswer" class="typing-caret" aria-hidden="true"></span>
+      </div>
+    </article>
+
+    <details v-if="hasDetails" class="evidence deep-stage-details">
+      <summary>证据路径</summary>
+      <div class="body">
+        <div v-if="memoryTouchpoints.length" class="recall-memory-touchpoints">
+          <div v-for="item in memoryTouchpoints" :key="item.source_id || item.title" class="e-src">
+            <span class="e-when">{{ memoryKindLabel(item.why_saved_status) }}</span>
+            <span class="e-q">「{{ item.title }}」</span>
           </div>
         </div>
-        <div v-else class="thinking-markdown-wrap" :class="{ 'is-streaming': isStreamingAnswer }">
-          <RichMarkdown :markdown="displayAnswerMarkdown" />
-          <span v-if="isStreamingAnswer" class="typing-caret" aria-hidden="true"></span>
+        <p v-else>{{ evidenceText }}</p>
+        <div v-if="stages.length && depth === 'deep'" class="deep-stage-list">
+          <span
+            v-for="stage in stages"
+            :key="stage.id"
+            :class="['deep-stage-pill', `is-${stage.status}`]"
+          >
+            {{ stage.label }}{{ stage.detail ? ` · ${stageDetailText(stage.detail)}` : '' }}
+          </span>
         </div>
-        <div v-if="showAnswerBoundaries" class="thinking-footnotes" aria-label="回答边界">
+        <div class="thinking-footnotes" aria-label="回答边界">
           <article v-for="section in thinkingSections" :key="section.label" class="thinking-block">
             <span class="thinking-block-label">{{ section.label }}</span>
             <p>{{ section.text }}</p>
           </article>
         </div>
       </div>
-    </article>
+    </details>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ChevronDown, ExternalLink, FileText, MessageSquare } from 'lucide-vue-next'
 import { filterUserFacingAnswerMarkdown } from '../answerDisplay'
 import RichMarkdown from './RichMarkdown.vue'
-import type { AskResponse, FocusGraph, LocalFileResult, RecallMode } from '../types'
+import type {
+  AskResponse,
+  FocusGraph,
+  LocalFileResult,
+  RecallDepth,
+  RecallMode,
+  RecallThought,
+  RecallThoughtTraceEvent,
+  ThoughtHistoryPayload,
+} from '../types'
 
 const props = defineProps<{
   result: AskResponse | null
@@ -114,7 +146,10 @@ const props = defineProps<{
   stages: Array<{ id: string; label: string; status: string; detail?: string }>
   question: string
   mode: RecallMode
+  depth: RecallDepth
   localFiles?: LocalFileResult[]
+  currentThought?: RecallThought | null
+  thoughtHistory?: ThoughtHistoryPayload | null
 }>()
 
 const emit = defineEmits<{
@@ -124,34 +159,75 @@ const emit = defineEmits<{
 
 const contexts = computed(() => props.result?.contexts || props.focusGraph?.evidence_cards || [])
 const localFiles = computed<LocalFileResult[]>(() => props.localFiles || props.result?.local_files || props.focusGraph?.local_files || [])
-const visibleLocalFiles = computed(() => localFiles.value)
 const projection = computed(() => props.result?.recall_projection || null)
-const confidenceLabel = computed(() => confidenceText(projection.value?.judgment.confidence_label || props.focusGraph?.confidence_summary.confidence_label || 'mixed'))
 const mode = computed(() => props.mode || 'auto')
+const depth = computed(() => props.depth || 'quick')
+const visibleLocalFiles = computed(() => {
+  if (mode.value === 'files') return localFiles.value.slice(0, 4)
+  return localFiles.value.slice(0, depth.value === 'deep' ? 3 : 2)
+})
+const hiddenLocalFiles = computed(() => localFiles.value.slice(visibleLocalFiles.value.length))
+const hiddenLocalFileCount = computed(() => hiddenLocalFiles.value.length)
 const showFiles = computed(() => mode.value !== 'answer')
 const showAnswer = computed(() => mode.value !== 'files')
-const filePanelTitle = computed(() => mode.value === 'files' ? '文件查找结果' : '召回的本地文件')
-const answerPanelTitle = computed(() => mode.value === 'answer' ? 'AI 回复' : 'SnapGraph 的思考')
 const isResolvingLocalFiles = computed(() => props.busy && !localFiles.value.length)
 const answerMarkdown = computed(() => props.result?.text || '')
 const displayAnswerMarkdown = computed(() => filterUserFacingAnswerMarkdown(answerMarkdown.value))
 const hasAnswerText = computed(() => Boolean(displayAnswerMarkdown.value.trim()))
 const isThinking = computed(() => showAnswer.value && props.busy && !hasAnswerText.value)
 const isStreamingAnswer = computed(() => props.busy && hasAnswerText.value && !projection.value)
-const showAnswerBoundaries = computed(() => mode.value === 'auto' && (contexts.value.length > 0 || props.busy))
-const localFileCountLabel = computed(() => {
-  if (isResolvingLocalFiles.value) return '查找中'
-  return localFiles.value.length ? `${localFiles.value.length} 个文件` : '未找到'
+const showDeepProcess = computed(() => depth.value === 'deep' && (showFiles.value || showAnswer.value))
+const currentThought = computed(() => props.currentThought || props.result?.thought || null)
+const showCurrentThought = computed(() => depth.value === 'deep' && Boolean(currentThought.value))
+const isThoughtStreaming = computed(() => currentThought.value?.status === 'thinking')
+const thoughtLines = computed(() => currentThought.value?.lines || [])
+const thoughtTraceEvents = computed<RecallThoughtTraceEvent[]>(() => currentThought.value?.trace_events || [])
+const thoughtHeading = computed(() => currentThought.value?.summary || '正在形成本轮 Thought')
+const thoughtBoxStatus = computed(() => isThoughtStreaming.value ? '正在思考 · 流式 solve trace' : '模型具体思考 · 公开 solve trace')
+const thoughtNotice = computed(() => currentThought.value?.notice || 'Thought 只来自本轮后端事件，不会伪造。')
+const thoughtTraceItems = computed(() => {
+  if (thoughtTraceEvents.value.length) {
+    return thoughtTraceEvents.value.map((event) => ({
+      id: event.trace_id,
+      label: traceLabel(event),
+      text: localizeThoughtLine(event.text),
+      active: isThoughtStreaming.value && event.call_state === 'running',
+    }))
+  }
+  return thoughtLines.value.map((line, index) => {
+    const localized = localizeThoughtLine(line)
+    const match = localized.match(/^([A-Za-z]+|Context)[：:]\s*(.+)$/)
+    return {
+      id: `legacy-${index}`,
+      label: match ? match[1].toUpperCase() : 'THINK',
+      text: match ? match[2] : localized,
+      active: isThoughtStreaming.value,
+    }
+  })
 })
-const thinkingStateLabel = computed(() => {
-  if (isThinking.value) return '整理中'
-  if (isStreamingAnswer.value) return '生成中'
-  return confidenceLabel.value
+const memoryTouchpoints = computed(() => contexts.value.slice(0, 3))
+const hasDetails = computed(() => contexts.value.length > 0 || props.stages.length > 0 || props.busy)
+const resultToneLabel = computed(() => {
+  if (mode.value === 'files') return localFiles.value.length ? '找到本地文件' : '本地检索'
+  if (!localFiles.value.length && !hasAnswerText.value && !props.busy) return '没有稳定证据'
+  return localFiles.value.length ? '找到你的原话' : 'AI 回复'
+})
+const resultToneClass = computed(() => {
+  if (!localFiles.value.length && !hasAnswerText.value && !props.busy) return 'tag-rust'
+  if (localFiles.value.length) return 'tag-moss'
+  return 'tag-grey'
+})
+const resultMeta = computed(() => {
+  const scanned = props.focusGraph?.confidence_summary.source_count || contexts.value.length || localFiles.value.length
+  if (localFiles.value.length) return `${localFiles.value.length} 份相关材料 · 本地优先 · 可打开原文`
+  if (props.busy) return '正在扫本地材料，结果固定前不展示猜测。'
+  return scanned ? `${scanned} 条本地线索 · 证据已收起` : '没有达到阈值的本地证据'
 })
 const thinkingProgressLabel = computed(() => {
   const active = props.stages.find((stage) => stage.status === 'active')
   if (active?.id === 'evidence') return '正在找本地证据'
-  if (active?.id === 'read') return '正在读保存理由'
+  if (active?.id === 'thought') return '正在形成 Thought'
+  if (active?.id === 'read') return '正在读用户原话'
   if (active?.id === 'connect') return '正在检查连接'
   return '正在组织回答'
 })
@@ -162,20 +238,13 @@ const thinkingProgressDetail = computed(() => {
 const evidenceText = computed(() => {
   if (props.busy && !contexts.value.length) return '正在读取本地图谱，还没有把结果固定下来。'
   const userAnchors = contexts.value.filter((item) => item.why_saved_status === 'user-stated')
-  if (userAnchors.length) {
-    const titles = userAnchors.slice(0, 2).map((item) => item.title).join('、')
-    return `优先依据 ${titles}，因为它们带有用户写下的保存理由。`
-  }
-  if (contexts.value.length) {
-    const titles = contexts.value.slice(0, 2).map((item) => item.title).join('、')
-    return `当前依据 ${titles}，但缺少明确的用户保存理由。`
-  }
+  if (userAnchors.length) return `优先依据 ${userAnchors.slice(0, 2).map((item) => item.title).join('、')}。`
+  if (contexts.value.length) return `当前依据 ${contexts.value.slice(0, 2).map((item) => item.title).join('、')}，但缺少明确用户保存理由。`
   return '没有可靠本地证据时，SnapGraph 不会把猜测当成你的记忆。'
 })
 const inferenceText = computed(() => {
-  if (props.busy && !contexts.value.length) return 'AI 推断会在找到证据后单独标记，不会混成你的原意。'
   const aiCount = contexts.value.filter((item) => item.why_saved_status === 'AI-inferred').length
-  if (aiCount) return `${aiCount} 条线索是 AI-inferred，只能作为待确认连接。`
+  if (aiCount) return `${aiCount} 条线索是 AI 猜的理由，只能作为待确认连接。`
   return '这次没有把 AI 推断伪装成用户原意。'
 })
 const nextText = computed(() => {
@@ -188,45 +257,43 @@ const nextText = computed(() => {
   return '换一个更接近旧材料标题、项目名或保存理由的问题。'
 })
 const thinkingSections = computed(() => [
-  { label: '依据', text: compactSignal(evidenceText.value, 54) },
-  { label: 'AI 推断', text: compactSignal(inferenceText.value, 46) },
-  { label: '下一步', text: compactSignal(nextText.value, 48) },
+  { label: '依据', text: compactSignal(evidenceText.value, 64) },
+  { label: 'AI 猜测', text: compactSignal(inferenceText.value, 56) },
+  { label: '下一步', text: compactSignal(nextText.value, 64) },
 ])
 
 function openLocalFile(file: LocalFileResult) {
   emit('openLocalFile', file)
 }
 
-function askAboutFile(file: LocalFileResult) {
-  emit('askFollowUp', `围绕《${file.title}》，继续解释它和这个问题的关系。`)
-}
-
-function displayPath(file: LocalFileResult) {
-  return file.raw_path || file.path
-}
-
-function statusLabel(file: LocalFileResult) {
-  if (file.why_saved_status === 'user-stated') return '用户原话'
-  if (file.why_saved_status === 'AI-inferred') return 'AI 推断'
+function fileSubtitle(file: LocalFileResult) {
+  if (file.space_name) return `${file.space_name} · 本地材料`
+  if (file.why_saved_status === 'user-stated') return '带有用户写过的保存理由'
+  if (file.why_saved_status === 'AI-inferred') return '保存理由需要你确认'
   return '本地材料'
 }
 
-function statusTone(file: LocalFileResult) {
-  if (file.why_saved_status === 'user-stated') return 'is-user'
-  if (file.why_saved_status === 'AI-inferred') return 'is-ai'
-  return 'is-source'
+function statusLabel(file: LocalFileResult) {
+  if (file.why_saved_status === 'user-stated') return '你的原话'
+  if (file.why_saved_status === 'AI-inferred') return 'AI 猜的理由'
+  return '本地材料'
 }
 
-function fileReason(file: LocalFileResult) {
-  if (file.why_saved_status === 'user-stated' && file.why_saved) return file.why_saved
-  if (file.source_excerpt) return file.source_excerpt
-  return '这份文件和当前问题存在本地命中关系。'
+function statusTagClass(file: LocalFileResult) {
+  if (file.why_saved_status === 'user-stated') return 'tag-moss'
+  if (file.why_saved_status === 'AI-inferred') return 'tag-web'
+  return 'tag-grey'
 }
 
-function confidenceText(label: string) {
-  if (label === 'strong') return '证据较强'
-  if (label === 'weak' || label === 'none') return '低置信度'
-  return '证据中等'
+function fileQuote(file: LocalFileResult) {
+  const value = file.source_excerpt || file.match_reason || file.why_saved || file.title
+  return compactSignal(localizeSnippet(value), 118)
+}
+
+function memoryKindLabel(status?: string) {
+  if (status === 'user-stated') return '你的'
+  if (status === 'AI-inferred') return 'AI 推'
+  return '材料'
 }
 
 function cleanText(text: string) {
@@ -234,20 +301,51 @@ function cleanText(text: string) {
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/^[-\d.]+\s*/gm, '')
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/gm, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
 function compactSignal(text: string, limit: number) {
   const cleaned = cleanText(text)
-  return cleaned.length <= limit ? cleaned : cleaned.slice(0, limit).trim()
+  return cleaned.length <= limit ? cleaned : `${cleaned.slice(0, limit).trim()}…`
 }
 
 function localizeActionDetail(detail: string) {
   const cleaned = detail.trim()
   const match = cleaned.match(/^Continue from (.+)\.$/)
   if (match) return `继续围绕 ${match[1]} 追问。`
-  return cleaned
+  return localizeSnippet(cleaned)
+}
+
+function stageDetailText(detail: string) {
+  return localizeSnippet(detail)
+    .replace(/user-stated/g, '用户原话')
+    .replace(/AI-inferred/g, 'AI 猜测')
+    .replace(/MockLLM/g, '本地模型')
+    .replace(/provider/g, '模型')
+}
+
+function localizeThoughtLine(text: string) {
+  return localizeSnippet(text)
+    .replace(/\bthinking\b/gi, 'thought')
+    .replace(/\btool events?\b/gi, '工具事件')
+}
+
+function traceLabel(event: RecallThoughtTraceEvent) {
+  const label = event.label || event.trace_role || 'THINK'
+  if (label.toLowerCase() === 'context') return 'CTX'
+  if (label.toLowerCase() === 'retrieve') return 'RET'
+  if (label.toLowerCase() === 'verify') return 'CHK'
+  if (label.toLowerCase() === 'finish') return 'OUT'
+  return label.toUpperCase()
+}
+
+function localizeSnippet(text: string) {
+  return text
+    .replace(/^AI-inferred\s*[:：]\s*/i, 'AI 猜测：')
+    .replace(/\bAI-inferred\b/g, 'AI 猜测')
+    .replace(/\buser-stated\b/g, '用户原话')
+    .replace(/\bopen loop\b/gi, '未处理完的问题')
 }
 </script>

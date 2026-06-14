@@ -917,7 +917,7 @@ const reviewQueueItems = computed<ReviewQueueItem[]>(() => {
       reviewStatus: reviewSource?.review_status || 'unreviewed',
       reviewNote: reviewSource?.review_note || '',
       originalWhySaved: reviewSource?.why_saved || '',
-      validationQuestion: `这个 open loop 下一步应该如何验证：${hotspot.open_loop}？`,
+      validationQuestion: `这个没处理完的问题下一步应该如何验证：${hotspot.open_loop}？`,
     })
   }
 
@@ -1073,7 +1073,7 @@ const overviewOpenItems = computed<OverviewOpenItem[]>(() => {
     key: `hotspot:${item.open_loop}`,
     title: item.open_loop,
     detail: item.count > 1 ? `来自 ${item.count} 条材料的开放问题。` : `来自 ${item.sources[0]?.title || '当前材料'} 的开放问题。`,
-    badge: item.sources[0]?.status === 'user-stated' ? 'user-stated / 用户原话' : 'AI-inferred / AI 推断',
+    badge: item.sources[0]?.status === 'user-stated' ? '用户原话' : 'AI 猜的理由',
     tone: item.sources[0]?.status === 'user-stated' ? 'tone-user' : 'tone-ai',
   }))
   const suggestionItems = props.suggestions.slice(0, 3).map((suggestion) => ({
@@ -1087,7 +1087,7 @@ const overviewOpenItems = computed<OverviewOpenItem[]>(() => {
     key: `path:${item.source_id}:${item.path}`,
     title: item.title,
     detail: item.why || '这条路径提示了一个值得继续追问的判断连接。',
-    badge: item.status === 'user-stated' ? 'user-stated / 用户原话' : 'AI-inferred / AI 推断',
+    badge: item.status === 'user-stated' ? '用户原话' : 'AI 猜的理由',
     tone: item.status === 'user-stated' ? 'tone-user' : 'tone-ai',
   }))
   return [...hotspotItems, ...suggestionItems, ...pathItems].slice(0, 6)
@@ -1788,9 +1788,9 @@ function sourceToneClass(source: Source) {
 }
 
 function sourceBadgeLabel(source: Source) {
-  if (source.why_saved_status === 'user-stated') return 'user-stated / 用户原话'
-  if (source.why_saved_status === 'AI-inferred') return 'AI-inferred / AI 推断'
-  return 'source / 材料'
+  if (source.why_saved_status === 'user-stated') return '用户原话'
+  if (source.why_saved_status === 'AI-inferred') return 'AI 猜的理由'
+  return '材料'
 }
 
 function nodeToneClass(node: GraphNode) {

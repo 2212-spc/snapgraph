@@ -452,11 +452,20 @@ test('App fetches saved questions and passes them into the graph cloud', () => {
   assert.match(spaces, /:questions="questions"/)
 })
 
-test('App treats visualization as a knowledge-internal view instead of a duplicate nav item', () => {
+test('App treats visualization and memory spaces as shelf-level views instead of duplicate nav items', () => {
   const app = read('frontend/src/App.vue')
+  const shelf = read('frontend/src/components/ShelfView.vue')
 
-  assert.match(app, /type ActiveView = 'recall' \| 'spaces' \| 'trust' \| 'collect'/)
-  assert.match(app, /label: '知识库'/)
+  assert.match(app, /type ActiveView = 'recall' \| 'emerge' \| 'collect' \| 'shelf'/)
+  assert.match(app, /label: '涌现'/)
+  assert.match(app, /label: '书架'/)
+  assert.match(app, /<OrganizeView/)
+  assert.match(app, /<ShelfView/)
+  assert.match(shelf, /你的图谱/)
+  assert.match(shelf, /shelf-grid/)
+  assert.match(shelf, /visibleSpaces/)
+  assert.doesNotMatch(shelf, /<SpacesView/)
+  assert.doesNotMatch(app, /label: '知识库'/)
   assert.doesNotMatch(app, /label: '可视化'/)
   assert.doesNotMatch(app, /activeView === 'visualize'/)
   assert.doesNotMatch(app, /图谱可视化/)

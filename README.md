@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11+-2b5b84?style=flat-square)
 ![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square)
 ![FastAPI](https://img.shields.io/badge/FastAPI-local%20API-009688?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-93%20python%20%2B%2030%20frontend-6b6b6b?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-122%20python%20%2B%2061%20frontend-6b6b6b?style=flat-square)
 
 SnapGraph is a cognitive LLM Wiki. It turns notes, links, text files, PDFs, screenshots, and saved answers into a local memory workspace with immutable sources, generated wiki pages, graph paths, and evidence-backed recall.
 
@@ -23,19 +23,20 @@ Most note apps remember *what* you saved. SnapGraph also preserves:
 
 ## Product Shape
 
-SnapGraph combines three surfaces:
+SnapGraph combines four product surfaces:
 
 | Surface | Purpose |
 | --- | --- |
+| **Ask Past** | Ask fuzzy questions such as "Why did I care about this?" and recover prior context with local evidence first. |
+| **Emerge** | Review open loops, AI-inferred context, and newly surfaced graph connections without losing source traceability. |
 | **Collect** | Save raw material with an optional user-stated reason. Raw sources remain traceable. |
-| **Recall** | Ask fuzzy questions such as "Why did I care about this?" and recover prior context. |
-| **Knowledge Cloud** | Browse saved questions, materials, open loops, and graph nodes as a HermesPet-inspired memory constellation. |
+| **Shelf** | Browse graph spaces, saved questions, materials, diagnostics, and the memory constellation. |
 
 <p align="center">
   <img src="docs/assets/snapgraph-memory-cloud.png" alt="SnapGraph memory cloud" width="82%">
 </p>
 
-The current frontend is a real Vue/FastAPI app, not a throwaway mockup. It includes a StudyAgent-style workspace shell, compact knowledge spaces, a draggable memory cloud, saved-question history panels, source evidence lists, and mobile responsive layouts.
+The current frontend is a real Vue/FastAPI app, not a throwaway mockup. It includes a paper-like SnapGraph shell, chat history in the sidebar, multi-turn recall threads, Deep Thought streaming, graph-space creation, a draggable memory cloud, source evidence lists, and mobile responsive layouts.
 
 <p align="center">
   <img src="docs/assets/snapgraph-mobile-recall.png" alt="SnapGraph mobile recall" width="34%">
@@ -46,6 +47,9 @@ The current frontend is a real Vue/FastAPI app, not a throwaway mockup. It inclu
 - **Immutable source archive**: copied raw inputs, source hashes, generated source pages, and append-only operation logs.
 - **Cognitive context**: every saved item separates user-stated reasons from AI-inferred context.
 - **Hybrid GraphRAG**: answers combine text retrieval, graph expansion, source pages, and evidence paths.
+- **Deep Thought recall mode**: the backend emits a public solve trace before the answer, with Plan/Retrieve/Think/Verify/Finish stages shown in a Deeptutor-style Thought card.
+- **Multi-turn history**: recall threads keep previous turns, restore from backend history without re-running the model, and support follow-up questions in one window.
+- **Graph spaces**: users can create and open real graph spaces from the Shelf instead of only seeing demo graph views.
 - **Saved answer memory**: useful answers can be written back into `wiki/questions/` and reopened later.
 - **Knowledge cloud**: search history becomes a constellation of saved questions, materials, open loops, and graph nodes.
 - **Local-first trust model**: API keys stay in environment variables; config stores only provider/model names.
@@ -194,8 +198,8 @@ npm run build
 Current local baseline:
 
 ```text
-93 Python tests passing
-30 frontend behavior tests passing
+122 Python tests passing
+61 frontend behavior tests passing
 Vite production build passing
 ```
 

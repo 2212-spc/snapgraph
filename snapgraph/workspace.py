@@ -179,6 +179,30 @@ def initialize_database(workspace: Workspace) -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS recall_history (
+                id TEXT PRIMARY KEY,
+                question TEXT NOT NULL,
+                mode TEXT NOT NULL DEFAULT 'auto',
+                depth TEXT NOT NULL DEFAULT 'quick',
+                space_id TEXT NOT NULL DEFAULT 'all',
+                context_source_ids_json TEXT NOT NULL DEFAULT '[]',
+                answer_preview TEXT NOT NULL DEFAULT '',
+                thought_summary TEXT NOT NULL DEFAULT '',
+                context_count INTEGER NOT NULL DEFAULT 0,
+                local_file_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        _ensure_column(conn, "recall_history", "thread_id", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "recall_history", "turn_id", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "recall_history", "turn_index", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "recall_history", "previous_turns_json", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(conn, "recall_history", "answer_text", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "recall_history", "thought_json", "TEXT NOT NULL DEFAULT '{}'")
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS nodes (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,

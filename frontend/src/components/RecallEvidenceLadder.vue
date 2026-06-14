@@ -23,7 +23,7 @@
           </div>
           <p>{{ item.body || emptyText(item.kind) }}</p>
           <div v-if="item.metadata?.open_loops?.length" class="recall-evidence-meta">
-            {{ item.metadata.open_loops.length }} 个 open loop
+            {{ item.metadata.open_loops.length }} 个没处理完的问题
           </div>
         </div>
       </article>
@@ -52,4 +52,3 @@ function emptyText(kind: RecallEvidenceKind) {
   return '这条证据暂时没有可展示的摘要。'
 }
 </script>
-
